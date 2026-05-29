@@ -22,6 +22,7 @@
 -   **Tool System**: Turn any R function into an AI-callable tool with automatic schema generation.
 -   **Structured Outputs**: Generate type-safe JSON, data frames, and complex objects.
 -   **Chat Sessions**: Stateful conversation management with history tracking.
+-   **Image Generation**: Dedicated image-model APIs with OpenAI `gpt-image-2`, Gemini, Volcengine, xAI, Stepfun, OpenRouter, and AiHubMix support.
 -   **Enterprise Ops**: Telemetry, hooks, cost tracking, and MCP (Model Context Protocol) support.
 
 ## Installation
@@ -32,6 +33,17 @@ You can install the development version of aisdk from [GitHub](https://github.co
 # install.packages("devtools")
 devtools::install_github("YuLab-SMU/aisdk")
 ```
+
+## Extension Packages
+
+`aisdk` now focuses on the runtime/core package surface. Domain and benchmark
+layers are being split into sibling extension packages:
+
+- `aisdk.bioc`: Bioconductor semantic adapters and workflow hints
+- `aisdk.bench`: semantic planning/task benchmarks and frozen benchmark artifacts
+
+If you need the old Bioconductor semantic layer or benchmark helpers, install
+the corresponding extension package in addition to `aisdk`.
 
 ## Quick Start
 
@@ -185,14 +197,71 @@ Current console features include:
 - a persistent status bar showing model, sandbox, stream, and tool state
 - per-turn tool timeline summaries in inspect mode
 - an overlay-backed inspector for the latest turn or an individual tool
+- read-only inspection of session objects and RStudio `.GlobalEnv` objects
+- Seurat-like object summaries for assays, layers/slots, reductions, images,
+  metadata columns, and cell/feature scale
 - session persistence via `/save` and `/load`
 
 Useful commands:
 
 - `/inspect on`, `/inspect turn`, `/inspect tool <index>`
 - `/inspect next`, `/inspect prev`, `/inspect close`
-- `/debug [on|off]`, `/stream [on|off]`
+- `/debug [on|off]`, `/stream [on|off]`, `/local [on|off]`
 - `/model <id>`, `/history`, `/stats`, `/clear`
+
+Use `/quit` or `/exit` only while the console is waiting for input. During a
+running model request, use RStudio Stop/ESC or terminal Ctrl-C to cancel the
+current turn; the console restores history to before that request and returns to
+the prompt.
+
+For error-driven work, `ask_ai()` collects the recent R error context,
+traceback, warnings, active RStudio document when available, session
+information, and workspace object summaries, then opens `console_chat()` with
+that context as the first turn:
+
+```r
+# Run after an R error, or from the RStudio Addin menu
+# ask_ai(skill = "biotree")
+
+# Preview what would be sent without launching chat
+# ask_ai(show_context = TRUE)
+```
+
+### Image Generation
+
+`aisdk` exposes image generation and editing through a dedicated `image_model()` path.
+
+```r
+library(aisdk)
+
+provider <- create_openai()
+image_model <- provider$image_model("gpt-image-2")
+
+result <- generate_image(
+  model = image_model,
+  prompt = "A clean editorial photo of a cobalt blue ceramic mug on white linen",
+  output_dir = tempdir(),
+  background = "transparent",
+  output_format = "webp",
+  output_compression = 60
+)
+
+result$images[[1]]$path
+```
+
+OpenAI image editing also supports local masks and, for the latest model family, richer edit controls such as multiple reference images and `input_fidelity`:
+
+```r
+result <- edit_image(
+  model = create_openai()$image_model("gpt-image-1.5"),
+  image = c("inst/extdata/product_front.png", "inst/extdata/product_side.png"),
+  prompt = "Combine both references into a single premium product shot.",
+  input_fidelity = "high",
+  output_format = "webp",
+  output_compression = 55,
+  output_dir = tempdir()
+)
+```
 
 ### Skills System
 

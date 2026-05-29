@@ -95,6 +95,7 @@ create_console_app_state <- function(session,
 console_app_sync_session <- function(state, session = state$session) {
   state$session <- session
   state$model_id <- session$get_model_id() %||% "(not set)"
+  state$persona_label <- console_persona_status_label(session)
   state$local_execution_enabled <- isTRUE(session$get_envir()$.local_mode)
   invisible(state)
 }
@@ -121,6 +122,7 @@ console_app_set_local_execution_enabled <- function(state, enabled) {
 console_app_status_snapshot <- function(state) {
   list(
     model_id = state$model_id %||% "(not set)",
+    persona_label = state$persona_label %||% console_default_persona_label(),
     sandbox_mode = state$sandbox_mode %||% "unknown",
     view_mode = state$view_mode %||% "clean",
     stream_enabled = isTRUE(state$stream_enabled),
@@ -166,10 +168,40 @@ build_console_status_segments <- function(state, compact = FALSE) {
     }
   }
 
+  model_option_fields <- character(0)
+  model_options <- tryCatch(state$session$get_model_options(), error = function(e) list())
+  call_options <- list_get_exact(model_options, "call_options", list())
+  if (!is.null(list_get_exact(call_options, "thinking"))) {
+    model_option_fields <- c(
+      model_option_fields,
+      sprintf("Think: %s", format_console_thinking_value(list_get_exact(call_options, "thinking")))
+    )
+  }
+  if (!is.null(list_get_exact(call_options, "reasoning_effort"))) {
+    model_option_fields <- c(
+      model_option_fields,
+      sprintf("Effort: %s", list_get_exact(call_options, "reasoning_effort"))
+    )
+  }
+  if (!is.null(list_get_exact(call_options, "thinking_budget"))) {
+    model_option_fields <- c(
+      model_option_fields,
+      sprintf("Budget: %s", format_console_token_compact(list_get_exact(call_options, "thinking_budget")))
+    )
+  }
+  if (!is.null(list_get_exact(call_options, "max_tokens"))) {
+    model_option_fields <- c(
+      model_option_fields,
+      sprintf("Max: %s", format_console_token_compact(list_get_exact(call_options, "max_tokens")))
+    )
+  }
+
   model_value <- if (compact) compact_text_preview(snapshot$model_id, width = 28) else snapshot$model_id
   c(
     sprintf("Model: %s", model_value),
+    sprintf(if (compact) "Persona: %s" else "Persona: %s", compact_text_preview(snapshot$persona_label, width = 20)),
     context_fields,
+    model_option_fields,
     sprintf(if (compact) "Sb: %s" else "Sandbox: %s", snapshot$sandbox_mode),
     sprintf(if (compact) "View: %s" else "View: %s", snapshot$view_mode),
     sprintf(if (compact) "Strm: %s" else "Stream: %s", if (snapshot$stream_enabled) "on" else "off"),
@@ -367,6 +399,10 @@ console_app_start_turn <- function(state, user_input) {
     phase = "thinking",
     user_text = user_input %||% "",
     assistant_text = "",
+    intermediate_text = "",
+    displayed_text_keys = character(),
+    assistant_text_keys = character(),
+    intermediate_text_keys = character(),
     tool_calls = list(),
     warnings = character(),
     messages = character(),
@@ -399,7 +435,37 @@ console_app_update_current_turn <- function(state, turn) {
 }
 
 #' @keywords internal
-console_app_append_assistant_text <- function(state, text) {
+console_app_text_key <- function(text) {
+  normalized <- gsub("[[:space:]]+", " ", trimws(text %||% ""))
+  if (!nzchar(normalized)) {
+    return("")
+  }
+  digest::digest(normalized, algo = "md5")
+}
+
+#' @keywords internal
+console_app_register_display_text <- function(state, text) {
+  key <- console_app_text_key(text)
+  if (!nzchar(key)) {
+    return(FALSE)
+  }
+
+  turn <- console_app_get_current_turn(state)
+  if (is.null(turn)) {
+    return(FALSE)
+  }
+
+  seen <- turn$displayed_text_keys %||% character()
+  duplicate <- key %in% seen
+  if (!duplicate) {
+    turn$displayed_text_keys <- c(seen, key)
+    console_app_update_current_turn(state, turn)
+  }
+  !duplicate
+}
+
+#' @keywords internal
+console_app_append_assistant_text <- function(state, text, dedupe = FALSE) {
   if (is.null(text) || !nzchar(text)) {
     return(invisible(state))
   }
@@ -409,12 +475,87 @@ console_app_append_assistant_text <- function(state, text) {
     return(invisible(state))
   }
 
+  if (isTRUE(dedupe)) {
+    key <- console_app_text_key(text)
+    seen <- turn$assistant_text_keys %||% character()
+    if (nzchar(key) && key %in% seen) {
+      return(invisible(FALSE))
+    }
+    if (nzchar(key)) {
+      turn$assistant_text_keys <- c(seen, key)
+    }
+  }
+
   turn$assistant_text <- paste0(turn$assistant_text %||% "", text)
   if (length(turn$tool_calls) > 0) {
     state$phase <- "rendering"
   }
   turn$phase <- state$phase
   console_app_update_current_turn(state, turn)
+  invisible(TRUE)
+}
+
+#' @keywords internal
+console_app_remove_assistant_text_once <- function(state, text) {
+  if (is.null(text) || !nzchar(text)) {
+    return(invisible(FALSE))
+  }
+
+  turn <- console_app_get_current_turn(state)
+  if (is.null(turn) || !nzchar(turn$assistant_text %||% "")) {
+    return(invisible(FALSE))
+  }
+
+  pos <- regexpr(text, turn$assistant_text, fixed = TRUE)[[1]]
+  if (pos < 1L) {
+    return(invisible(FALSE))
+  }
+
+  before <- if (pos > 1L) substr(turn$assistant_text, 1L, pos - 1L) else ""
+  after_start <- pos + nchar(text, type = "chars")
+  after <- if (after_start <= nchar(turn$assistant_text, type = "chars")) {
+    substr(turn$assistant_text, after_start, nchar(turn$assistant_text, type = "chars"))
+  } else {
+    ""
+  }
+  turn$assistant_text <- paste0(before, after)
+
+  key <- console_app_text_key(text)
+  if (nzchar(key)) {
+    turn$assistant_text_keys <- setdiff(turn$assistant_text_keys %||% character(), key)
+  }
+
+  console_app_update_current_turn(state, turn)
+  invisible(TRUE)
+}
+
+#' @keywords internal
+console_app_append_intermediate_text <- function(state, text, dedupe = TRUE) {
+  if (is.null(text) || !nzchar(text)) {
+    return(invisible(state))
+  }
+
+  turn <- console_app_get_current_turn(state)
+  if (is.null(turn)) {
+    return(invisible(state))
+  }
+
+  if (isTRUE(dedupe)) {
+    key <- console_app_text_key(text)
+    seen <- turn$intermediate_text_keys %||% character()
+    if (nzchar(key) && key %in% seen) {
+      return(invisible(FALSE))
+    }
+    if (nzchar(key)) {
+      turn$intermediate_text_keys <- c(seen, key)
+    }
+  }
+
+  turn$intermediate_text <- paste0(turn$intermediate_text %||% "", text)
+  state$phase <- "rendering"
+  turn$phase <- state$phase
+  console_app_update_current_turn(state, turn)
+  invisible(TRUE)
 }
 
 #' @keywords internal
@@ -509,8 +650,18 @@ console_app_record_tool_result <- function(state, name, result, success = TRUE, 
 
   item <- turn$tool_calls[[match_idx]]
   item$end_time <- Sys.time()
+  display_status <- if (is.list(raw_result) && identical(raw_result$error_type %||% NULL, "invalid_tool_arguments")) {
+    "invalid_arguments"
+  } else {
+    NULL
+  }
   item$status <- if (failed) "failed" else "done"
-  item$result_summary <- compact_tool_result_label(name, result, success = !failed)
+  item$result_summary <- compact_tool_result_label(
+    name,
+    result,
+    success = !failed,
+    display_status = display_status
+  )
   item$raw_result <- raw_result
 
   diagnostics <- extract_console_tool_diagnostics(raw_result, rendered_result = result)
@@ -531,23 +682,30 @@ console_app_record_tool_result <- function(state, name, result, success = TRUE, 
 }
 
 #' @keywords internal
-console_app_finish_turn <- function(state, failed = FALSE) {
+console_app_finish_turn <- function(state, failed = FALSE, cancelled = FALSE) {
   turn <- console_app_get_current_turn(state)
+  failed <- isTRUE(failed)
+  cancelled <- isTRUE(cancelled)
+  terminal_phase <- if (cancelled) "cancelled" else if (failed) "error" else "done"
   if (is.null(turn)) {
-    state$phase <- if (failed) "error" else "idle"
-    state$tool_state <- if (failed) "error" else "idle"
+    state$phase <- if (failed || cancelled) terminal_phase else "idle"
+    state$tool_state <- if (failed && !cancelled) "error" else "idle"
     return(invisible(state))
   }
 
   turn$ended_at <- Sys.time()
-  turn$phase <- if (failed) "error" else "done"
+  turn$phase <- terminal_phase
   if (!is.null(turn$started_at) && !is.null(turn$ended_at)) {
     turn$elapsed_ms <- as.numeric(difftime(turn$ended_at, turn$started_at, units = "secs")) * 1000
   }
 
-  state$phase <- if (failed) "error" else "idle"
-  if (!failed && identical(state$tool_state, "running")) {
+  state$phase <- if (failed || cancelled) terminal_phase else "idle"
+  if (cancelled) {
     state$tool_state <- "idle"
+  } else if (!failed && identical(state$tool_state, "running")) {
+    state$tool_state <- "idle"
+  } else if (failed && identical(state$tool_state, "running")) {
+    state$tool_state <- "error"
   }
 
   console_app_update_current_turn(state, turn)

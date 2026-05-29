@@ -13,11 +13,15 @@ stream_text(
   max_tokens = NULL,
   tools = NULL,
   max_steps = 1,
+  max_tool_result_errors = 2,
+  require_post_tool_protocol = FALSE,
   sandbox = FALSE,
   skills = NULL,
   session = NULL,
   hooks = NULL,
   registry = NULL,
+  renderer = NULL,
+  .stream_event_callback = NULL,
   ...
 )
 }
@@ -36,8 +40,18 @@ stream_text(
 
 \item{tools}{Optional list of Tool objects for function calling.}
 
-\item{max_steps}{Maximum number of generation steps (tool execution loops).
-Default 1. Set to higher values (e.g., 5) to enable automatic tool execution.}
+\item{max_steps}{Number of model/tool steps in one execution window.
+Default 1. The runtime treats this as a budget checkpoint, not as a hard
+task stop.}
+
+\item{max_tool_result_errors}{Historical compatibility option. Tool result
+errors are recorded as task observations; runtime policy decides whether
+to continue, finalize, ask the user, or block.}
+
+\item{require_post_tool_protocol}{Logical. If TRUE, after any tool results
+are returned the model must either make another tool call or wrap its final
+answer in a \verb{<final_answer>...</final_answer>} block. This is enabled
+automatically for text-based tool fallback.}
 
 \item{sandbox}{Logical. If TRUE, enables R-native programmatic sandbox mode.
 See \code{generate_text} for details. Default FALSE.}
@@ -49,6 +63,13 @@ See \code{generate_text} for details. Default FALSE.}
 \item{hooks}{Optional HookHandler object.}
 
 \item{registry}{Optional ProviderRegistry to use.}
+
+\item{renderer}{Optional \link{Renderer} for agent output. Defaults to the cli
+terminal backend (\code{\link[=create_stream_renderer]{create_stream_renderer()}}); pass any Renderer-conforming
+object (e.g. from a web UI, \code{\link[=create_capture_renderer]{create_capture_renderer()}}, or
+\code{\link[=create_null_renderer]{create_null_renderer()}}) to render agent output elsewhere.}
+
+\item{.stream_event_callback}{Internal callback for typed stream events.}
 
 \item{...}{Additional arguments passed to the model.}
 }

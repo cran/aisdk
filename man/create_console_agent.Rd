@@ -8,17 +8,30 @@ create_console_agent(
   working_dir = tempdir(),
   sandbox_mode = "permissive",
   additional_tools = NULL,
-  language = "auto"
+  language = "auto",
+  startup_dir = working_dir,
+  skills = "auto",
+  profile = c("minimal", "legacy"),
+  extensions = "auto"
 )
 }
 \arguments{
-\item{working_dir}{Working directory. Defaults to \code{tempdir()}.}
+\item{working_dir}{Working directory for sandboxed tool execution. Defaults to \code{tempdir()}.}
 
 \item{sandbox_mode}{Sandbox mode: "strict", "permissive", or "none" (default: "permissive").}
 
 \item{additional_tools}{Optional list of additional Tool objects to include.}
 
 \item{language}{Language for responses: "auto", "en", or "zh" (default: "auto").}
+
+\item{startup_dir}{R session startup directory used for project-aware context. Defaults to \code{getwd()}.}
+
+\item{skills}{Optional skill paths, \code{"auto"}, or a SkillRegistry object.}
+
+\item{profile}{Console profile. \code{"minimal"} is the default Pi-like tool set;
+\code{"legacy"} restores the previous all-in-one console agent.}
+
+\item{extensions}{Extension loading mode. Defaults to \code{"auto"}.}
 }
 \value{
 An Agent object configured for console interaction.

@@ -11,7 +11,13 @@ create_openai(
   project = NULL,
   headers = NULL,
   name = NULL,
-  disable_stream_options = FALSE
+  timeout_seconds = NULL,
+  total_timeout_seconds = NULL,
+  first_byte_timeout_seconds = NULL,
+  connect_timeout_seconds = NULL,
+  idle_timeout_seconds = NULL,
+  disable_stream_options = FALSE,
+  api_format = c("auto", "chat", "responses")
 )
 }
 \arguments{
@@ -27,7 +33,19 @@ create_openai(
 
 \item{name}{Optional provider name override (for compatible APIs).}
 
+\item{timeout_seconds}{Legacy alias for \code{total_timeout_seconds}.}
+
+\item{total_timeout_seconds}{Optional total request timeout in seconds for API calls.}
+
+\item{first_byte_timeout_seconds}{Optional time-to-first-byte timeout in seconds for API calls.}
+
+\item{connect_timeout_seconds}{Optional connection-establishment timeout in seconds for API calls.}
+
+\item{idle_timeout_seconds}{Optional stall timeout in seconds for API calls.}
+
 \item{disable_stream_options}{Disable stream_options parameter (for providers like Volcengine that don't support it).}
+
+\item{api_format}{Default API surface for \code{smart_model()} / \code{model()}: \code{"auto"} (default, picks Chat or Responses based on model), \code{"chat"} (always Chat Completions), or \code{"responses"} (always Responses API).}
 }
 \value{
 An OpenAIProvider object.
@@ -35,6 +53,28 @@ An OpenAIProvider object.
 \description{
 Factory function to create an OpenAI provider.
 }
+\section{Supported Models}{
+
+\itemize{
+\item \strong{gpt-5.5}: Latest OpenAI frontier model for complex reasoning, coding, and professional workflows. (Reasoning, Vision, Tools, Structured) | ctx: 1050k
+\item \strong{gpt-5.5-pro}: Higher-compute GPT-5.5 variant for the hardest professional and reasoning tasks. (Reasoning, Vision, Tools, Structured) | ctx: 1050k
+\item \strong{gpt-5.4}: Frontier model for coding and professional work with 1.05M context. (Reasoning, Vision, Tools, Structured) | ctx: 1050k
+\item \strong{gpt-5.4-pro}: Higher-compute GPT-5.4 variant for more precise responses on difficult tasks. (Reasoning, Vision, Tools, Structured) | ctx: 1050k
+\item \strong{gpt-5.4-mini}: Strong mini model for coding, computer use, and subagents. (Reasoning, Vision, Tools, Structured) | ctx: 400k
+\item \strong{gpt-5.4-nano}: Lowest-cost GPT-5.4-class model for high-volume classification, extraction, ranking, and subagents. (Reasoning, Vision, Tools, Structured) | ctx: 400k
+\item \strong{gpt-5.3-codex}: Agentic coding model optimized for Codex-like environments. (Reasoning, Vision, Tools, Structured) | ctx: 400k
+\item \strong{gpt-5}: Reasoning model for coding and agentic tasks across domains. (Reasoning, Vision, Tools, Structured) | ctx: 400k
+\item \strong{gpt-5-mini}: Cost-sensitive, low-latency GPT-5 model for well-defined tasks and precise prompts. (Reasoning, Vision, Tools, Structured) | ctx: 400k
+\item \strong{gpt-5-nano}: Fastest and lowest-cost GPT-5 model for summarization, classification, and routing. (Reasoning, Vision, Tools, Structured) | ctx: 400k
+\item \strong{gpt-4.1}: Smart non-reasoning model with strong instruction following and tool calling. (Vision, Tools, Structured) | ctx: 1048k
+\item \strong{gpt-4.1-mini}: Smaller, faster GPT-4.1 model with long-context support. (Vision, Tools, Structured) | ctx: 1048k
+\item \strong{gpt-4.1-nano}: Fastest and lowest-cost GPT-4.1 model for simple tasks. (Vision, Tools, Structured) | ctx: 1048k
+\item \strong{gpt-4o}: Legacy multimodal GPT model with broad ecosystem support. (Vision, Tools, Structured) | ctx: 128k
+\item \strong{gpt-4o-mini}: Fast, affordable GPT-4o model for focused tasks. (Vision, Tools, Structured) | ctx: 128k
+\item \emph{... and 6 more models. Use \code{list_models("openai")} to see all.}
+}
+}
+
 \section{Token Limit Parameters}{
 
 The SDK provides a unified \code{max_tokens} parameter that automatically maps to the

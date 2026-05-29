@@ -58,6 +58,45 @@ test_that("Computer.read_file reads file contents", {
   unlink(test_file)
 })
 
+test_that("Computer.read_file falls back for non-UTF-8 text", {
+  skip_on_cran()
+  workdir <- tempfile("computer-encoding-")
+  dir.create(workdir, recursive = TRUE)
+  on.exit(unlink(workdir, recursive = TRUE), add = TRUE)
+
+  comp <- Computer$new(working_dir = workdir, sandbox_mode = "permissive")
+  latin1_file <- file.path(workdir, "latin1.txt")
+  writeBin(c(charToRaw("caf"), as.raw(0xe9), as.raw(0x0a)), latin1_file)
+
+  result <- comp$read_file("latin1.txt")
+
+  expect_false(result$error)
+  expect_equal(result$content, "café")
+  expect_true(validUTF8(result$content))
+})
+
+test_that("computer read_file tool exposes optional encoding override", {
+  skip_on_cran()
+  workdir <- tempfile("computer-tool-encoding-")
+  dir.create(workdir, recursive = TRUE)
+  on.exit(unlink(workdir, recursive = TRUE), add = TRUE)
+
+  latin1_file <- file.path(workdir, "latin1.txt")
+  writeBin(c(charToRaw("caf"), as.raw(0xe9), as.raw(0x0a)), latin1_file)
+
+  tools <- create_computer_tools(working_dir = workdir)
+  read_tool <- find_tool(tools, "read_file")
+  schema <- schema_to_list(read_tool$parameters)
+
+  expect_true("encoding" %in% names(schema$properties))
+  expect_equal(unlist(schema$required), "path")
+
+  result <- read_tool$run(list(path = "latin1.txt", encoding = "latin1"))
+
+  expect_equal(result, "café")
+  expect_true(validUTF8(result))
+})
+
 test_that("Computer.read_file handles missing files", {
   skip_on_cran()
   comp <- Computer$new(working_dir = tempdir(), sandbox_mode = "permissive")
@@ -116,6 +155,7 @@ test_that("Computer.execute_r_code executes simple code", {
 
   expect_false(result$error)
   expect_true(result$result == 4)
+  expect_equal(result$execution_mode, "sandbox_exec")
 })
 
 test_that("Computer.execute_r_code handles errors", {
@@ -126,6 +166,7 @@ test_that("Computer.execute_r_code handles errors", {
 
   expect_true(result$error)
   expect_true(grepl("test error", result$message))
+  expect_equal(result$execution_mode, "sandbox_exec")
 })
 
 test_that("Computer.execute_r_code respects strict sandbox mode", {
@@ -137,6 +178,7 @@ test_that("Computer.execute_r_code respects strict sandbox mode", {
 
   expect_true(result$error)
   expect_true(grepl("Sandbox violation", result$message))
+  expect_equal(result$execution_mode, "sandbox_exec")
 })
 
 test_that("Computer maintains execution log", {
@@ -168,12 +210,13 @@ test_that("create_computer_tools returns list of Tools", {
 
   tools <- create_computer_tools(working_dir = tempdir())
 
-  expect_length(tools, 4)
+  expect_length(tools, 5)
   expect_s3_class(tools[[1]], "R6")
   expect_equal(tools[[1]]$name, "bash")
   expect_equal(tools[[2]]$name, "read_file")
   expect_equal(tools[[3]]$name, "write_file")
-  expect_equal(tools[[4]]$name, "execute_r_code")
+  expect_equal(tools[[4]]$name, "edit_file")
+  expect_equal(tools[[5]]$name, "execute_r_code")
 })
 
 test_that("computer tools have layer attribute set to 'computer'", {
@@ -198,6 +241,11 @@ test_that("computer tools are executable", {
   # Test write_file tool
   result <- tools[[3]]$run(list(path = "test.txt", content = "content"))
   expect_true(grepl("Successfully wrote", result))
+
+  # Test edit_file tool
+  result <- tools[[4]]$run(list(path = "test.txt", pattern = "content", replacement = "updated", all = FALSE))
+  expect_true(grepl("Edited file", result))
+  expect_equal(readLines(file.path(tempdir(), "test.txt"), warn = FALSE), "updated")
 
   # Cleanup
   unlink(file.path(tempdir(), "test.txt"))
@@ -299,7 +347,7 @@ test_that("create_computer_tools accepts custom Computer instance", {
 
   tools <- create_computer_tools(computer = custom_comp)
 
-  expect_length(tools, 4)
+  expect_length(tools, 5)
 
   # Verify the tools use the strict computer instance
   result <- tools[[1]]$run(list(command = "rm -rf /"))

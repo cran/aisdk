@@ -4,20 +4,34 @@
 \alias{create_console_tools}
 \title{Create Console Tools}
 \usage{
-create_console_tools(working_dir = tempdir(), sandbox_mode = "permissive")
+create_console_tools(
+  working_dir = tempdir(),
+  sandbox_mode = "permissive",
+  startup_dir = working_dir,
+  profile = c("minimal", "legacy"),
+  extensions = "auto"
+)
 }
 \arguments{
-\item{working_dir}{Working directory. Defaults to \code{tempdir()}.}
+\item{working_dir}{Working directory for sandboxed tool execution. Defaults to \code{tempdir()}.}
 
 \item{sandbox_mode}{Sandbox mode: "strict", "permissive", or "none" (default: "permissive").}
+
+\item{startup_dir}{R session startup directory used for project-aware context. Defaults to \code{getwd()}.}
+
+\item{profile}{Console profile. \code{"minimal"} is the default Pi-like tool set;
+\code{"legacy"} restores the previous all-in-one console tools.}
+
+\item{extensions}{Extension loading mode. Defaults to \code{"auto"}.}
 }
 \value{
 A list of Tool objects.
 }
 \description{
 Create a set of tools optimized for console/terminal interaction.
-Includes computer tools (bash, read_file, write_file, execute_r_code)
-plus additional console-specific tools.
+The default \code{"minimal"} profile exposes only \code{bash}, \code{read_file},
+\code{write_file}, and \code{edit_file}. Use \code{profile = "legacy"} for the prior
+broad tool surface including R, image, Feishu, skill, and inspection tools.
 }
 \examples{
 \donttest{

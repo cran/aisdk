@@ -23,7 +23,11 @@ This is the "API" that the LLM Manager uses for semantic routing.}
 
 \item{\code{tools}}{List of Tool objects this agent can use.}
 
+\item{\code{skill_registry}}{Optional registry of local skills available to the agent.}
+
 \item{\code{model}}{Default model ID for this agent.}
+
+\item{\code{capability_models}}{Optional capability-specific model routes.}
 }
 \if{html}{\out{</div>}}
 }
@@ -51,7 +55,8 @@ Initialize a new Agent.
   system_prompt = NULL,
   tools = NULL,
   skills = NULL,
-  model = NULL
+  model = NULL,
+  capability_models = NULL
 )}\if{html}{\out{</div>}}
 }
 
@@ -71,6 +76,8 @@ This is used by the Manager LLM to decide which agent to delegate to.}
 When provided, this automatically loads skills, creates tools, and updates the system prompt.}
 
 \item{\code{model}}{Optional default model ID for this agent.}
+
+\item{\code{capability_models}}{Optional named list of capability-specific model routes.}
 }
 \if{html}{\out{</div>}}
 }

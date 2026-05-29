@@ -12,6 +12,24 @@ test_that("ChatSession initializes correctly", {
   expect_s3_class(session, "ChatSession")
   expect_equal(session$get_model_id(), openai_model_id)
   expect_equal(length(session$get_history()), 0)
+  expect_true(exists(".semantic_adapter_registry", envir = session$get_envir(), inherits = FALSE))
+  expect_s3_class(get(".semantic_adapter_registry", envir = session$get_envir()), "SemanticAdapterRegistry")
+})
+
+test_that("register_semantic_adapter adds adapters to the session registry", {
+  session <- ChatSession$new(model = openai_model_id)
+
+  adapter <- create_semantic_adapter(
+    name = "dummy-adapter",
+    supports = function(obj) inherits(obj, "dummy_semantic_class"),
+    capabilities = "identity",
+    render_summary = function(obj, name = NULL) "dummy"
+  )
+
+  register_semantic_adapter(adapter, session = session)
+  registry <- get_semantic_adapter_registry(session = session)
+
+  expect_true("dummy-adapter" %in% registry$list_adapters())
 })
 
 test_that("create_chat_session factory works", {
@@ -92,7 +110,17 @@ test_that("as_list exports session state", {
     model = openai_model_id,
     system_prompt = "Test system prompt",
     max_steps = 5,
-    metadata = list(channel = list(channel_id = "feishu"))
+    metadata = list(channel = list(channel_id = "feishu")),
+    envir = local({
+      e <- new.env(parent = emptyenv())
+      e$.console_image_artifacts <- list(list(
+        artifact_id = "img-0001",
+        kind = "generated",
+        artifacts = list(list(path = "/tmp/generated.png"))
+      ))
+      e$.console_image_artifact_next_id <- 2L
+      e
+    })
   )
 
   session$append_message("user", "Hello")
@@ -106,6 +134,8 @@ test_that("as_list exports session state", {
   expect_equal(length(data$history), 2)
   expect_equal(data$max_steps, 5)
   expect_equal(data$metadata$channel$channel_id, "feishu")
+  expect_equal(data$envir_state$console_image_artifacts[[1]]$artifact_id, "img-0001")
+  expect_equal(data$envir_state$console_image_artifact_next_id, 2L)
 })
 
 test_that("restore_from_list restores session state", {
@@ -126,6 +156,28 @@ test_that("restore_from_list restores session state", {
   expect_equal(restored$get_model_id(), openai_model_id)
   expect_equal(length(restored$get_history()), 2)
   expect_equal(restored$get_last_response(), "Hi!")
+})
+
+test_that("restore_from_list restores console image artifact state into session environment", {
+  data <- list(
+    model_id = openai_model_id,
+    history = list(),
+    envir_state = list(
+      console_image_artifacts = list(list(
+        artifact_id = "img-0004",
+        kind = "edited",
+        artifacts = list(list(path = "/tmp/edited.png"))
+      )),
+      console_image_artifact_next_id = 5L
+    )
+  )
+
+  restored <- ChatSession$new()
+  restored$restore_from_list(data)
+  envir <- restored$get_envir()
+
+  expect_equal(envir$.console_image_artifacts[[1]]$artifact_id, "img-0004")
+  expect_equal(envir$.console_image_artifact_next_id, 5L)
 })
 
 test_that("save and load_chat_session work with RDS", {
@@ -229,4 +281,14 @@ test_that("ChatSession metadata helpers round-trip", {
   expect_equal(session$get_metadata("channel")$channel_id, "feishu")
   expect_equal(session$get_metadata("parent_session_key"), "root")
   expect_true(all(c("channel", "parent_session_key") %in% session$list_metadata()))
+})
+
+test_that("ChatSession stores a single multimodal content block as a block list", {
+  session <- ChatSession$new(model = MockModel$new())
+
+  session$append_message("user", input_image("https://example.com/dog.png"))
+  history <- session$get_history()
+
+  expect_length(history[[1]]$content, 1)
+  expect_equal(history[[1]]$content[[1]]$type, "input_image")
 })

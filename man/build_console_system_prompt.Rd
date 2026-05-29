@@ -4,10 +4,18 @@
 \alias{build_console_system_prompt}
 \title{Build Console System Prompt}
 \usage{
-build_console_system_prompt(working_dir, sandbox_mode, language)
+build_console_system_prompt(
+  working_dir,
+  startup_dir,
+  sandbox_mode,
+  language,
+  profile = c("minimal", "legacy")
+)
 }
 \arguments{
-\item{working_dir}{Current working directory.}
+\item{working_dir}{Sandbox working directory for tool execution.}
+
+\item{startup_dir}{R session startup directory for project-aware context.}
 
 \item{sandbox_mode}{Sandbox mode setting.}
 

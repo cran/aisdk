@@ -12,6 +12,8 @@ generate_text(
   max_tokens = NULL,
   tools = NULL,
   max_steps = 1,
+  max_tool_result_errors = 2,
+  require_post_tool_protocol = FALSE,
   sandbox = FALSE,
   skills = NULL,
   session = NULL,
@@ -33,9 +35,18 @@ generate_text(
 
 \item{tools}{Optional list of Tool objects for function calling.}
 
-\item{max_steps}{Maximum number of generation steps (tool execution loops).
-Default 1 (single generation, no automatic tool execution).
-Set to higher values (e.g., 5) to enable automatic tool execution.}
+\item{max_steps}{Number of model/tool steps in one execution window.
+Default 1. The runtime treats this as a budget checkpoint, not as a hard
+task stop.}
+
+\item{max_tool_result_errors}{Historical compatibility option. Tool result
+errors are recorded as task observations; runtime policy decides whether
+to continue, finalize, ask the user, or block.}
+
+\item{require_post_tool_protocol}{Logical. If TRUE, after any tool results
+are returned the model must either make another tool call or wrap its final
+answer in a \verb{<final_answer>...</final_answer>} block. This is enabled
+automatically for text-based tool fallback.}
 
 \item{sandbox}{Logical. If TRUE, enables R-native programmatic sandbox mode.
 All tools are bound into an isolated R environment and replaced by a single
@@ -68,9 +79,10 @@ When max_steps > 1 and tools are used, the result includes:
 Generate text using a language model. This is the primary high-level function
 for non-streaming text generation.
 
-When tools are provided and max_steps > 1, the function will automatically
-execute tool calls and feed results back to the LLM in a ReAct-style loop
-until the LLM produces a final response or max_steps is reached.
+When tools are provided, the function automatically executes tool calls and
+feeds results back to the LLM in a task-state driven runtime. \code{max_steps}
+controls one execution window; the runtime may open another window or
+finalize from tool observations instead of silently stopping at the boundary.
 }
 \examples{
 \donttest{

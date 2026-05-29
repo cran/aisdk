@@ -76,3 +76,45 @@ test_that("Session from Agent maintains history", {
   expect_equal(mock_model$last_params$messages[[4]]$role, "user")
   expect_equal(mock_model$last_params$messages[[4]]$content, "Continue")
 })
+
+test_that("ChatSession send can append a turn-specific system prompt", {
+  mock_model <- MockModel$new()
+  mock_model$add_response(text = "Response 1")
+
+  session <- create_chat_session(model = mock_model, system_prompt = "Base system")
+  session$send("Hello", turn_system_prompt = "Matched skill context")
+
+  expect_equal(mock_model$last_params$messages[[1]]$role, "system")
+  expect_match(mock_model$last_params$messages[[1]]$content, "Base system", fixed = TRUE)
+  expect_match(mock_model$last_params$messages[[1]]$content, "Matched skill context", fixed = TRUE)
+})
+
+test_that("ChatSession send forwards the live session to tool execution", {
+  mock_model <- MockModel$new()
+  mock_model$add_response(
+    tool_calls = list(list(
+      id = "call_1",
+      name = "store_value",
+      arguments = list(value = 42)
+    ))
+  )
+  mock_model$add_response(text = "Stored")
+
+  store_tool <- Tool$new(
+    name = "store_value",
+    description = "Store a value in the session environment",
+    parameters = z_object(
+      value = z_number("Value to store")
+    ),
+    execute = function(args) {
+      assign("stored_value", args$value, envir = args$.envir)
+      paste("Stored", args$value)
+    }
+  )
+
+  session <- create_chat_session(model = mock_model, tools = list(store_tool))
+  session$send("Store 42")
+
+  expect_true(exists("stored_value", envir = session$get_envir()))
+  expect_equal(session$get_envir()$stored_value, 42)
+})

@@ -131,7 +131,7 @@ Computer <- R6::R6Class("Computer",
       # Read file
       tryCatch(
         {
-          content <- paste(readLines(full_path, encoding = encoding, warn = FALSE), collapse = "\n")
+          content <- private$read_text_file(full_path, encoding = encoding)
           list(
             content = content,
             error = FALSE,
@@ -201,11 +201,99 @@ Computer <- R6::R6Class("Computer",
     },
 
     #' @description
-    #' Execute R code
+    #' Edit a file by replacing an exact text pattern.
+    #' @param path File path (relative to working_dir or absolute)
+    #' @param pattern Exact text to replace
+    #' @param replacement Replacement text
+    #' @param all Whether to replace all occurrences. Default FALSE.
+    #' @param encoding File encoding (default: "UTF-8")
+    #' @return Success status
+    edit_file = function(path, pattern, replacement, all = FALSE, encoding = "UTF-8") {
+      private$log_execution("edit_file", list(path = path, pattern_size = nchar(pattern %||% "")))
+
+      full_path <- private$resolve_path(path)
+      if (self$sandbox_mode == "strict") {
+        violation <- private$check_write_violation(full_path)
+        if (!is.null(violation)) {
+          return(list(
+            success = FALSE,
+            error = TRUE,
+            message = paste("Sandbox violation:", violation)
+          ))
+        }
+      }
+      if (!file.exists(full_path)) {
+        return(list(
+          success = FALSE,
+          error = TRUE,
+          message = paste("File not found:", path)
+        ))
+      }
+      if (!is.character(pattern) || length(pattern) != 1L || !nzchar(pattern)) {
+        return(list(
+          success = FALSE,
+          error = TRUE,
+          message = "`pattern` must be a single non-empty string."
+        ))
+      }
+      if (!is.character(replacement) || length(replacement) != 1L) {
+        return(list(
+          success = FALSE,
+          error = TRUE,
+          message = "`replacement` must be a single string."
+        ))
+      }
+
+      tryCatch(
+        {
+          content <- private$read_text_file(full_path, encoding = encoding)
+          matches <- gregexpr(pattern, content, fixed = TRUE)[[1]]
+          count <- if (identical(matches[[1]], -1L)) 0L else length(matches)
+          if (count == 0L) {
+            return(list(
+              success = FALSE,
+              error = TRUE,
+              message = "Pattern not found."
+            ))
+          }
+          if (!isTRUE(all) && count > 1L) {
+            return(list(
+              success = FALSE,
+              error = TRUE,
+              message = paste("Pattern matched", count, "times. Refine the pattern or set `all = TRUE`.")
+            ))
+          }
+          edited <- sub(pattern, replacement, content, fixed = TRUE)
+          if (isTRUE(all)) {
+            edited <- gsub(pattern, replacement, content, fixed = TRUE)
+          }
+          writeLines(edited, full_path, useBytes = TRUE)
+          list(
+            success = TRUE,
+            error = FALSE,
+            path = full_path,
+            replacements = if (isTRUE(all)) count else 1L,
+            created_files = list(full_path)
+          )
+        },
+        error = function(e) {
+          list(
+            success = FALSE,
+            error = TRUE,
+            message = conditionMessage(e)
+          )
+        }
+      )
+    },
+
+    #' @description
+    #' Execute R code in an isolated `callr` process
     #' @param code R code to execute
     #' @param timeout_ms Timeout in milliseconds (default: 30000)
     #' @param capture_output Whether to capture output (default: TRUE)
-    #' @return List with result, output, error
+    #' @return List with result, output, error, and `execution_mode`.
+    #'   `execution_mode` is always `"sandbox_exec"` for this computer-layer path,
+    #'   which does not persist values into a live `ChatSession$get_envir()`.
     execute_r_code = function(code, timeout_ms = 30000, capture_output = TRUE) {
       # Log execution
       private$log_execution("execute_r_code", list(code_length = nchar(code)))
@@ -219,7 +307,8 @@ Computer <- R6::R6Class("Computer",
             result = NULL,
             output = "",
             error = TRUE,
-            message = paste("Sandbox violation:", violation)
+            message = paste("Sandbox violation:", violation),
+            execution_mode = "sandbox_exec"
           ))
         }
       }
@@ -288,7 +377,8 @@ Computer <- R6::R6Class("Computer",
             result = NULL,
             output = "",
             error = TRUE,
-            message = conditionMessage(e)
+            message = conditionMessage(e),
+            execution_mode = "sandbox_exec"
           ))
         }
       )
@@ -317,7 +407,8 @@ Computer <- R6::R6Class("Computer",
           error = FALSE,
           messages = result$messages %||% character(0),
           warnings = result$warnings %||% character(0),
-          created_files = normalizePath(result$created_files %||% character(0), winslash = "/", mustWork = FALSE)
+          created_files = normalizePath(result$created_files %||% character(0), winslash = "/", mustWork = FALSE),
+          execution_mode = "sandbox_exec"
         )
       }
     },
@@ -351,6 +442,56 @@ Computer <- R6::R6Class("Computer",
         return(character(0))
       }
       normalizePath(created, winslash = "/", mustWork = FALSE)
+    },
+
+    read_text_file = function(path, encoding = "UTF-8") {
+      bytes <- readBin(path, what = "raw", n = file.info(path)$size %||% 0L)
+      if (any(bytes == as.raw(0))) {
+        stop("File contains NUL bytes and appears to be binary; cannot decode as text.")
+      }
+      text <- if (length(bytes) == 0L) "" else rawToChar(bytes, multiple = FALSE)
+
+      normalize_lines <- function(decoded) {
+        decoded <- sub("\\r\\n$|\\n$|\\r$", "", decoded, perl = TRUE)
+        decoded <- gsub("\r\n", "\n", decoded, fixed = TRUE)
+        gsub("\r", "\n", decoded, fixed = TRUE)
+      }
+
+      guessed <- character(0)
+      if (requireNamespace("readr", quietly = TRUE)) {
+        guessed <- tryCatch(
+          readr::guess_encoding(bytes)$encoding,
+          error = function(e) character(0)
+        )
+      }
+
+      try_encodings <- unique(c(
+        encoding,
+        guessed,
+        "UTF-8",
+        "GB18030",
+        "GBK",
+        "BIG5",
+        "SJIS",
+        "EUC-JP",
+        "latin1",
+        "CP1252"
+      ))
+
+      for (enc in try_encodings) {
+        if (!is.character(enc) || length(enc) != 1L || !nzchar(enc) || enc %in% c("UTF-8-BOM", "native.enc")) {
+          next
+        }
+        decoded <- tryCatch(
+          iconv(text, from = enc, to = "UTF-8", sub = NA_character_),
+          error = function(e) NA_character_
+        )
+        if (!is.na(decoded) && validUTF8(decoded)) {
+          return(normalize_lines(decoded))
+        }
+      }
+
+      stop("Unable to decode file as UTF-8 text.")
     },
 
     #' Check bash command for sandbox violations
@@ -479,15 +620,18 @@ create_computer_tools <- function(computer = NULL, working_dir = tempdir(), sand
     tool(
       name = "read_file",
       description = paste(
-        "Read the contents of a file.",
+        "Read the contents of a text file with automatic encoding fallback.",
         "Path can be relative to working directory or absolute.",
-        "Returns file contents as text."
+        "Returns file contents as UTF-8 text.",
+        "If automatic detection fails or output looks garbled, retry with explicit encoding such as GB18030, GBK, latin1, or CP1252."
       ),
       parameters = z_object(
-        path = z_string("Path to the file to read")
+        path = z_string("Path to the file to read"),
+        encoding = z_string("Optional source file encoding to try first, for example UTF-8, GB18030, GBK, BIG5, latin1, or CP1252.", nullable = TRUE),
+        .required = "path"
       ),
-      execute = function(path) {
-        result <- computer$read_file(path)
+      execute = function(path, encoding = NULL) {
+        result <- computer$read_file(path, encoding = encoding %||% "UTF-8")
         if (result$error) {
           result$message
         } else {
@@ -523,11 +667,42 @@ create_computer_tools <- function(computer = NULL, working_dir = tempdir(), sand
       layer = "computer"
     ),
 
+    tool(
+      name = "edit_file",
+      description = paste(
+        "Edit a file by replacing an exact text pattern.",
+        "Use this for small targeted changes after reading the file.",
+        "The pattern must match exactly. By default it must match once."
+      ),
+      parameters = z_object(
+        path = z_string("Path to the file to edit"),
+        pattern = z_string("Exact text to replace"),
+        replacement = z_string("Replacement text"),
+        all = z_boolean("Replace all occurrences instead of requiring a single match")
+      ),
+      execute = function(path, pattern, replacement, all = FALSE) {
+        result <- computer$edit_file(path, pattern, replacement, all = all)
+        if (result$error) {
+          result$message
+        } else {
+          annotate_artifacts(
+            paste0(
+              "Edited file: ", result$path,
+              "\nReplacements: ", result$replacements
+            ),
+            result$created_files %||% character(0)
+          )
+        }
+      },
+      layer = "computer"
+    ),
+
     # Execute R code tool
     tool(
       name = "execute_r_code",
       description = paste(
         "Execute R code in an isolated process.",
+        "This always runs as sandbox_exec and does not mutate a live ChatSession environment.",
         "Use this to run data analysis, create plots, or perform computations.",
         "Returns the result and any output."
       ),

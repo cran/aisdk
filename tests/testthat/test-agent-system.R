@@ -38,6 +38,18 @@ test_that("SharedSession variable scoping works", {
   expect_equal(session$get_var("nonexistent", default = 99), 99)
 })
 
+test_that("SharedSession global scope is the canonical session environment", {
+  session <- SharedSession$new()
+  env <- session$get_envir()
+
+  session$set_var("from_scope", 10, scope = "global")
+  expect_true(exists("from_scope", envir = env, inherits = FALSE))
+  expect_equal(env$from_scope, 10)
+
+  assign("from_env", 20, envir = env)
+  expect_equal(session$get_var("from_env", scope = "global"), 20)
+})
+
 test_that("SharedSession code execution works", {
   session <- SharedSession$new(sandbox_mode = "permissive")
 
@@ -113,69 +125,8 @@ test_that("SharedSession tracing works", {
   expect_true(summary$total_events > 0)
 })
 
-test_that("Flow initializes correctly", {
-  session <- SharedSession$new()
-  registry <- AgentRegistry$new()
-
-  flow <- Flow$new(
-    session = session,
-    model = openai_model_id,
-    registry = registry,
-    max_depth = 5,
-    enable_guardrails = TRUE
-  )
-
-  expect_s3_class(flow, "Flow")
-  expect_equal(flow$depth(), 0)
-})
-
-test_that("Flow generates unified delegate tool", {
-  session <- SharedSession$new()
-
-  # Create test agents
-  agent1 <- Agent$new(
-    name = "TestAgent1",
-    description = "Test agent 1"
-  )
-  agent2 <- Agent$new(
-    name = "TestAgent2",
-    description = "Test agent 2"
-  )
-
-  registry <- AgentRegistry$new(list(agent1, agent2))
-
-  flow <- Flow$new(
-    session = session,
-    model = openai_model_id,
-    registry = registry
-  )
-
-  # Generate delegate tool
-  delegate_tool <- flow$generate_delegate_tool()
-
-  expect_s3_class(delegate_tool, "Tool")
-  expect_equal(delegate_tool$name, "delegate_task")
-  expect_true(grepl("TestAgent1", delegate_tool$description))
-  expect_true(grepl("TestAgent2", delegate_tool$description))
-})
-
-test_that("Flow delegation history tracking works", {
-  session <- SharedSession$new()
-  registry <- AgentRegistry$new()
-
-  flow <- Flow$new(
-    session = session,
-    model = openai_model_id,
-    registry = registry
-  )
-
-  # Initially empty
-  expect_equal(length(flow$get_delegation_history()), 0)
-
-  # Stats should show zero
-  stats <- flow$delegation_stats()
-  expect_equal(stats$total_delegations, 0)
-})
+# Flow tests moved to the companion package aisdk.orchestration (where Flow now
+# lives); core no longer depends on the orchestration layer.
 
 test_that("DataAgent creates correctly", {
   agent <- create_data_agent()

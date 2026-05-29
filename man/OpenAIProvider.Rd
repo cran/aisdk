@@ -19,8 +19,13 @@ Provider class for OpenAI. Can create language and embedding models.
 \item \href{#method-OpenAIProvider-new}{\code{OpenAIProvider$new()}}
 \item \href{#method-OpenAIProvider-language_model}{\code{OpenAIProvider$language_model()}}
 \item \href{#method-OpenAIProvider-responses_model}{\code{OpenAIProvider$responses_model()}}
+\item \href{#method-OpenAIProvider-model}{\code{OpenAIProvider$model()}}
 \item \href{#method-OpenAIProvider-smart_model}{\code{OpenAIProvider$smart_model()}}
 \item \href{#method-OpenAIProvider-embedding_model}{\code{OpenAIProvider$embedding_model()}}
+\item \href{#method-OpenAIProvider-image_model}{\code{OpenAIProvider$image_model()}}
+\item \href{#method-OpenAIProvider-create_conversation}{\code{OpenAIProvider$create_conversation()}}
+\item \href{#method-OpenAIProvider-get_conversation}{\code{OpenAIProvider$get_conversation()}}
+\item \href{#method-OpenAIProvider-delete_conversation}{\code{OpenAIProvider$delete_conversation()}}
 \item \href{#method-OpenAIProvider-clone}{\code{OpenAIProvider$clone()}}
 }
 }
@@ -37,7 +42,13 @@ Initialize the OpenAI provider.
   project = NULL,
   headers = NULL,
   name = NULL,
-  disable_stream_options = FALSE
+  timeout_seconds = NULL,
+  total_timeout_seconds = NULL,
+  first_byte_timeout_seconds = NULL,
+  connect_timeout_seconds = NULL,
+  idle_timeout_seconds = NULL,
+  disable_stream_options = FALSE,
+  api_format = c("auto", "chat", "responses")
 )}\if{html}{\out{</div>}}
 }
 
@@ -56,7 +67,25 @@ Initialize the OpenAI provider.
 
 \item{\code{name}}{Optional provider name override (for compatible APIs).}
 
+\item{\code{timeout_seconds}}{Legacy alias for \code{total_timeout_seconds}.}
+
+\item{\code{total_timeout_seconds}}{Optional total request timeout in seconds for API calls.}
+
+\item{\code{first_byte_timeout_seconds}}{Optional time-to-first-byte timeout in seconds for API calls.}
+
+\item{\code{connect_timeout_seconds}}{Optional connection-establishment timeout in seconds for API calls.}
+
+\item{\code{idle_timeout_seconds}}{Optional stall timeout in seconds for API calls.}
+
 \item{\code{disable_stream_options}}{Disable stream_options parameter (for providers that don't support it).}
+
+\item{\code{api_format}}{Default API surface for \code{smart_model()} / \code{model()}:
+"auto" (route reasoning models to Responses, others to Chat — the
+canonical OpenAI behavior), "chat" (always Chat Completions — useful
+for proxies that don't expose /responses, or that surface reasoning
+models like gpt-5.x via /chat/completions), or "responses" (always
+Responses API). The explicit \code{language_model()} and \code{responses_model()}
+methods continue to ignore this setting.}
 }
 \if{html}{\out{</div>}}
 }
@@ -65,7 +94,7 @@ Initialize the OpenAI provider.
 \if{html}{\out{<a id="method-OpenAIProvider-language_model"></a>}}
 \if{latex}{\out{\hypertarget{method-OpenAIProvider-language_model}{}}}
 \subsection{Method \code{language_model()}}{
-Create a language model.
+Create a language model (always Chat Completions API).
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{OpenAIProvider$language_model(model_id = Sys.getenv("OPENAI_MODEL", "gpt-4o"))}\if{html}{\out{</div>}}
 }
@@ -114,14 +143,36 @@ An OpenAIResponsesLanguageModel object.
 }
 }
 \if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-OpenAIProvider-model"></a>}}
+\if{latex}{\out{\hypertarget{method-OpenAIProvider-model}{}}}
+\subsection{Method \code{model()}}{
+Default-route factory. Picks chat vs responses based on the
+\code{api_format} set in \code{create_openai()}. Recommended entry point for
+callers that don't care which surface is used.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{OpenAIProvider$model(model_id = Sys.getenv("OPENAI_MODEL", "gpt-4o"))}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{model_id}}{The model ID. Defaults to \code{OPENAI_MODEL} env var.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A LanguageModelV1 instance.
+}
+}
+\if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-OpenAIProvider-smart_model"></a>}}
 \if{latex}{\out{\hypertarget{method-OpenAIProvider-smart_model}{}}}
 \subsection{Method \code{smart_model()}}{
-Smart model factory that automatically selects the best API.
+Smart model factory that selects the API surface.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{OpenAIProvider$smart_model(
   model_id,
-  api_format = c("auto", "chat", "responses")
+  api_format = private$config$api_format \%||\% "auto"
 )}\if{html}{\out{</div>}}
 }
 
@@ -130,18 +181,21 @@ Smart model factory that automatically selects the best API.
 \describe{
 \item{\code{model_id}}{The model ID.}
 
-\item{\code{api_format}}{API format to use: "auto" (default), "chat", or "responses".}
+\item{\code{api_format}}{API format: "auto" (default — reasoning → Responses,
+others → Chat), "chat", or "responses". Defaults to the
+\code{api_format} passed to \code{create_openai()}.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Details}{
-When \code{api_format = "auto"} (default), the method automatically selects:
+When \code{api_format = "auto"}, the method picks:
 \itemize{
-\item Responses API for reasoning models (o1, o3, o1-mini, o3-mini)
-\item Chat Completions API for all other models (gpt-4o, gpt-4, etc.)
+\item Responses API for reasoning models (o1, o3, gpt-5, ...)
+\item Chat Completions API for everything else
 }
 
-You can override this by explicitly setting \code{api_format}.
+Override per-call when the provider's default doesn't match the
+specific model you're about to use.
 }
 
 \subsection{Returns}{
@@ -166,6 +220,98 @@ Create an embedding model.
 }
 \subsection{Returns}{
 An OpenAIEmbeddingModel object.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-OpenAIProvider-image_model"></a>}}
+\if{latex}{\out{\hypertarget{method-OpenAIProvider-image_model}{}}}
+\subsection{Method \code{image_model()}}{
+Create an image model.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{OpenAIProvider$image_model(
+  model_id = Sys.getenv("OPENAI_IMAGE_MODEL", "gpt-image-2")
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{model_id}}{The model ID (e.g., "gpt-image-2", "gpt-image-1.5").}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+An OpenAIImageModel object.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-OpenAIProvider-create_conversation"></a>}}
+\if{latex}{\out{\hypertarget{method-OpenAIProvider-create_conversation}{}}}
+\subsection{Method \code{create_conversation()}}{
+Create a server-side conversation object via
+\code{POST /v1/conversations}. Returns the parsed response, including the
+conversation \code{id} you can pass as \code{conversation = "conv_..."} to
+\code{generate_text()} / \code{stream_text()} so OpenAI manages the message
+history server-side instead of you sending the full transcript each
+turn.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{OpenAIProvider$create_conversation(items = NULL, metadata = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{items}}{Optional list of initial conversation items, each shaped
+like \code{list(type = "message", role = "user", content = "Hello!")}.}
+
+\item{\code{metadata}}{Optional named list (up to 16 keys, values stringified).}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+Parsed response list with at least \code{id}, \code{object}, \code{created_at},
+\code{metadata}.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-OpenAIProvider-get_conversation"></a>}}
+\if{latex}{\out{\hypertarget{method-OpenAIProvider-get_conversation}{}}}
+\subsection{Method \code{get_conversation()}}{
+Retrieve a conversation object by id.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{OpenAIProvider$get_conversation(conversation_id)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{conversation_id}}{Conversation id returned from \code{create_conversation()}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+Parsed response list.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-OpenAIProvider-delete_conversation"></a>}}
+\if{latex}{\out{\hypertarget{method-OpenAIProvider-delete_conversation}{}}}
+\subsection{Method \code{delete_conversation()}}{
+Delete a conversation object by id. Server-side history
+is irrecoverable after this call.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{OpenAIProvider$delete_conversation(conversation_id)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{conversation_id}}{Conversation id returned from \code{create_conversation()}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+Parsed response list (typically \code{list(id, object, deleted)}).
 }
 }
 \if{html}{\out{<hr>}}

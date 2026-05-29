@@ -4,14 +4,511 @@
 #' @name core_api
 NULL
 
+#' @keywords internal
+parse_tool_call_json_payload <- function(payload, fallback_index = 1L) {
+  payload <- trimws(payload %||% "")
+  if (!nzchar(payload)) {
+    return(list())
+  }
+
+  parsed <- tryCatch(
+    jsonlite::fromJSON(payload, simplifyVector = FALSE),
+    error = function(e) {
+      repaired <- repair_json_string(payload)
+      tryCatch(
+        jsonlite::fromJSON(repaired, simplifyVector = FALSE),
+        error = function(e2) NULL
+      )
+    }
+  )
+
+  normalize_one <- function(item, idx) {
+    if (is.null(item) || !is.list(item)) {
+      return(NULL)
+    }
+
+    fn <- item$`function` %||% NULL
+    name <- item$name %||% item$tool_name %||% fn$name %||% ""
+    if (!nzchar(name)) {
+      return(NULL)
+    }
+
+    arguments <- item$arguments %||% fn$arguments %||% item$input %||% list()
+    list(
+      id = item$id %||% item$tool_call_id %||% sprintf("text_tool_call_%02d", idx),
+      name = name,
+      arguments = parse_tool_arguments(arguments, tool_name = name)
+    )
+  }
+
+  normalize_many <- function(value, offset = fallback_index) {
+    if (is.null(value) || !is.list(value)) {
+      return(list())
+    }
+
+    if (!is.null(value$tool_calls) && is.list(value$tool_calls)) {
+      return(normalize_many(value$tool_calls, offset = offset))
+    }
+
+    if (!is.null(value$name) || !is.null(value$tool_name) || !is.null(value$`function`$name)) {
+      one <- normalize_one(value, offset)
+      return(if (is.null(one)) list() else list(one))
+    }
+
+    calls <- list()
+    for (i in seq_along(value)) {
+      item <- normalize_one(value[[i]], offset + i - 1L)
+      if (!is.null(item)) {
+        calls[[length(calls) + 1L]] <- item
+      }
+    }
+    calls
+  }
+
+  normalize_many(parsed, offset = fallback_index)
+}
+
+#' @keywords internal
+parse_tool_call_blocks <- function(text) {
+  if (is.null(text) || !nzchar(text)) {
+    return(list(tool_calls = NULL, text = text))
+  }
+
+  parse_tag_blocks <- function(current_text, tag, parse_block) {
+    pattern <- sprintf("(?is)<%s>\\s*.*?\\s*</%s>", tag, tag)
+    matches <- gregexpr(pattern, current_text, perl = TRUE)[[1]]
+    if (length(matches) == 1L && identical(matches[[1]], -1L)) {
+      return(list(tool_calls = list(), text = current_text))
+    }
+
+    blocks <- regmatches(current_text, list(matches))[[1]]
+    calls <- list()
+    for (i in seq_along(blocks)) {
+      inner <- sub(sprintf("(?is)^\\s*<%s>\\s*", tag), "", blocks[[i]], perl = TRUE)
+      inner <- sub(sprintf("(?is)\\s*</%s>\\s*$", tag), "", inner, perl = TRUE)
+      block_calls <- parse_block(trimws(inner), length(calls) + 1L)
+      if (length(block_calls) > 0) {
+        calls <- c(calls, block_calls)
+      }
+    }
+
+    cleaned <- current_text
+    regmatches(cleaned, list(matches)) <- list(rep("", length(blocks)))
+    list(tool_calls = calls, text = cleaned)
+  }
+
+  tool_calls <- list()
+  cleaned_text <- text
+
+  plural <- parse_tag_blocks(cleaned_text, "tool_calls", function(inner, fallback_index) {
+    nested <- parse_tool_call_blocks(inner)
+    if (!is.null(nested$tool_calls) && length(nested$tool_calls) > 0) {
+      return(nested$tool_calls)
+    }
+    parse_tool_call_json_payload(inner, fallback_index = fallback_index)
+  })
+  tool_calls <- c(tool_calls, plural$tool_calls)
+  cleaned_text <- plural$text
+
+  singular <- parse_tag_blocks(cleaned_text, "tool_call", function(inner, fallback_index) {
+    parse_tool_call_json_payload(inner, fallback_index = fallback_index)
+  })
+  tool_calls <- c(tool_calls, singular$tool_calls)
+  cleaned_text <- singular$text
+
+  cleaned_text <- gsub("(?is)<tool_calls>\\s*</tool_calls>", "", cleaned_text, perl = TRUE)
+  cleaned_text <- trimws(cleaned_text)
+
+  if (length(tool_calls) == 0) {
+    return(list(tool_calls = NULL, text = text))
+  }
+
+  list(tool_calls = tool_calls, text = cleaned_text)
+}
+
+#' @keywords internal
+recover_text_tool_calls <- function(result) {
+  if (!is.null(result$tool_calls) && length(result$tool_calls) > 0) {
+    return(result)
+  }
+
+  original_text <- result$text %||% ""
+  parsed <- parse_tool_call_blocks(result$text %||% "")
+  if (is.null(parsed$tool_calls) || length(parsed$tool_calls) == 0) {
+    return(result)
+  }
+
+  result$tool_calls <- parsed$tool_calls
+  result$text <- parsed$text
+  result$text_tool_call_explicit <- TRUE
+  result$text_tool_call_extra_text <- parsed$text
+  result$text_tool_call_protocol_text <- original_text
+  if (is.null(result$finish_reason) || !nzchar(result$finish_reason %||% "")) {
+    result$finish_reason <- "tool_calls"
+  }
+  result
+}
+
+#' @keywords internal
+parse_final_answer_block <- function(text) {
+  if (is.null(text) || !nzchar(text)) {
+    return(list(final_answer = NULL, text = text, explicit = FALSE))
+  }
+
+  matches <- gregexpr("(?is)<final_answer>\\s*.*?\\s*</final_answer>", text, perl = TRUE)[[1]]
+  if (length(matches) == 1L && identical(matches[[1]], -1L)) {
+    return(list(final_answer = NULL, text = text, explicit = FALSE))
+  }
+
+  blocks <- regmatches(text, list(matches))[[1]]
+  answers <- vapply(blocks, function(block) {
+    inner <- sub("(?is)^\\s*<final_answer>\\s*", "", block, perl = TRUE)
+    inner <- sub("(?is)\\s*</final_answer>\\s*$", "", inner, perl = TRUE)
+    trimws(inner)
+  }, character(1))
+  answers <- answers[nzchar(answers)]
+
+  if (length(answers) == 0) {
+    return(list(final_answer = NULL, text = text, explicit = FALSE))
+  }
+
+  cleaned <- text
+  regmatches(cleaned, list(matches)) <- list(rep("", length(blocks)))
+  cleaned <- trimws(cleaned)
+
+  list(
+    final_answer = paste(answers, collapse = "\n\n"),
+    text = cleaned,
+    explicit = TRUE
+  )
+}
+
+#' @keywords internal
+recover_text_final_answer <- function(result) {
+  original_text <- result$text %||% ""
+  parsed <- parse_final_answer_block(result$text %||% "")
+  result$final_answer_explicit <- isTRUE(parsed$explicit)
+  result$final_answer_extra_text <- parsed$text %||% ""
+  if (!isTRUE(parsed$explicit)) {
+    return(result)
+  }
+
+  result$final_answer_protocol_text <- original_text
+  result$text <- parsed$final_answer
+  result
+}
+
+#' @keywords internal
+text_tool_protocol_missing <- function(result, awaiting_protocol = FALSE) {
+  if (!isTRUE(awaiting_protocol)) {
+    return(FALSE)
+  }
+
+  has_tool_call <- length(result$tool_calls %||% list()) > 0
+  has_final_answer <- isTRUE(result$final_answer_explicit)
+  if (isTRUE(has_tool_call) && isTRUE(has_final_answer)) {
+    return(TRUE)
+  }
+  FALSE
+}
+
+#' @keywords internal
+new_tool_protocol_markup_filter <- function() {
+  tags <- c("tool_calls", "tool_call", "final_answer")
+  start_patterns <- paste0("<", tags)
+  hidden_tags <- c("tool_calls", "tool_call")
+  state <- new.env(parent = emptyenv())
+  state$buffer <- ""
+  state$current_tag <- NULL
+
+  keep_suffix <- function(text, n) {
+    len <- nchar(text, type = "chars")
+    if (len <= n) {
+      text
+    } else {
+      substr(text, len - n + 1L, len)
+    }
+  }
+
+  find_next_start <- function(buffer) {
+    positions <- vapply(start_patterns, function(pattern) {
+      regexpr(pattern, buffer, fixed = TRUE)[[1]]
+    }, integer(1))
+    valid <- which(positions > 0)
+    if (length(valid) == 0) {
+      return(NULL)
+    }
+    idx <- valid[[which.min(positions[valid])]]
+    list(pos = positions[[idx]], tag = tags[[idx]], pattern = start_patterns[[idx]])
+  }
+
+  detect_open_tag <- function(buffer, tag, pattern) {
+    gt_pos <- regexpr(">", buffer, fixed = TRUE)[[1]]
+    if (identical(gt_pos, -1L)) {
+      return(NULL)
+    }
+
+    open_text <- substr(buffer, 1L, gt_pos)
+    if (!grepl(sprintf("^<%s\\s*>$", tag), open_text, perl = TRUE)) {
+      return(FALSE)
+    }
+
+    list(after = gt_pos + 1L)
+  }
+
+  state$process <- function(text, done = FALSE) {
+    if (!is.null(text) && nzchar(text)) {
+      state$buffer <- paste0(state$buffer, text)
+    }
+
+    out <- ""
+
+    repeat {
+      if (!is.null(state$current_tag)) {
+        end_tag <- paste0("</", state$current_tag, ">")
+        end_pos <- regexpr(end_tag, state$buffer, fixed = TRUE)[[1]]
+        if (identical(end_pos, -1L)) {
+          if (state$current_tag %in% hidden_tags) {
+            state$buffer <- keep_suffix(state$buffer, nchar(end_tag) - 1L)
+          } else {
+            keep <- nchar(end_tag) - 1L
+            len <- nchar(state$buffer, type = "chars")
+            if (len > keep) {
+              safe_len <- len - keep
+              out <- paste0(out, substr(state$buffer, 1L, safe_len))
+              state$buffer <- substr(state$buffer, safe_len + 1L, len)
+            }
+          }
+          break
+        }
+
+        if (!state$current_tag %in% hidden_tags && end_pos > 1L) {
+          out <- paste0(out, substr(state$buffer, 1L, end_pos - 1L))
+        }
+        end_after <- end_pos + nchar(end_tag) - 1L
+        state$buffer <- substr(state$buffer, end_after + 1L, nchar(state$buffer))
+        state$current_tag <- NULL
+        next
+      }
+
+      start <- find_next_start(state$buffer)
+      if (!is.null(start)) {
+        if (start$pos > 1L) {
+          out <- paste0(out, substr(state$buffer, 1L, start$pos - 1L))
+        }
+        state$buffer <- substr(state$buffer, start$pos, nchar(state$buffer))
+
+        open <- detect_open_tag(state$buffer, start$tag, start$pattern)
+        if (is.null(open)) {
+          break
+        }
+        if (identical(open, FALSE)) {
+          out <- paste0(out, substr(state$buffer, 1L, nchar(start$pattern)))
+          state$buffer <- substr(state$buffer, nchar(start$pattern) + 1L, nchar(state$buffer))
+          next
+        }
+
+        state$buffer <- substr(state$buffer, open$after, nchar(state$buffer))
+        state$current_tag <- start$tag
+        next
+      }
+
+      if (isTRUE(done)) {
+        out <- paste0(out, state$buffer)
+        state$buffer <- ""
+      } else {
+        keep <- max(nchar(start_patterns)) - 1L
+        len <- nchar(state$buffer, type = "chars")
+        if (len > keep) {
+          safe_len <- len - keep
+          out <- paste0(out, substr(state$buffer, 1L, safe_len))
+          state$buffer <- substr(state$buffer, safe_len + 1L, len)
+        }
+      }
+      break
+    }
+
+    if (isTRUE(done)) {
+      state$buffer <- ""
+      state$current_tag <- NULL
+    }
+
+    out
+  }
+
+  state
+}
+
+#' @keywords internal
+post_tool_protocol_tool_call_instruction <- function(use_text_tool_fallback = FALSE) {
+  if (isTRUE(use_text_tool_fallback)) {
+    return(paste(
+      "Continue with another tool call:",
+      "<tool_call>",
+      "{\"name\":\"tool_name\",\"arguments\":{}}",
+      "</tool_call>",
+      sep = "\n"
+    ))
+  }
+
+  "Continue with another tool call by using the provider's native/API tool-call interface. Do not write prose while doing so."
+}
+
+#' @keywords internal
+post_tool_protocol_final_answer_instruction <- function() {
+  paste(
+    "Or finish the task for the user:",
+    "<final_answer>",
+    "Your final answer to the user.",
+    "</final_answer>",
+    sep = "\n"
+  )
+}
+
+#' @keywords internal
+post_tool_protocol_system_prompt <- function(use_text_tool_fallback = FALSE) {
+  paste(
+    "Post-tool response protocol:",
+    "After tool results are provided, choose exactly one next action:",
+    "If more tool work is needed, call a tool immediately.",
+    "If the task is complete, answer the user directly.",
+    "Do not narrate that you will continue unless you also call a tool.",
+    post_tool_protocol_tool_call_instruction(use_text_tool_fallback = use_text_tool_fallback),
+    "To finish, write the final user-visible answer. You may wrap it in `<final_answer>...</final_answer>`, but plain final text is also valid.",
+    sep = "\n\n"
+  )
+}
+
+#' @keywords internal
+append_post_tool_protocol_message <- function(messages, use_text_tool_fallback = FALSE) {
+  content <- paste(
+    "Post-tool response protocol:",
+    "Return exactly one next action:",
+    post_tool_protocol_tool_call_instruction(use_text_tool_fallback = use_text_tool_fallback),
+    "Or finish by writing the final answer directly. Optional compatibility form:",
+    "<final_answer>",
+    "Your final answer to the user.",
+    "</final_answer>",
+    sep = "\n\n"
+  )
+  c(messages, list(list(role = "user", content = content)))
+}
+
+#' @keywords internal
+text_tool_protocol_correction_message <- function(result, use_text_tool_fallback = TRUE) {
+  preview_source <- result$final_answer_protocol_text %||%
+    result$text_tool_call_protocol_text %||%
+    result$text %||%
+    ""
+  preview <- compact_text_preview(preview_source, width = 800)
+  content <- paste(
+    "Your previous response after tool results did not follow the required post-tool protocol.",
+    "Do not explain the protocol. Re-emit exactly one next action.",
+    "Use a tool call if more tool work is needed, or give the final answer directly if the task is complete.",
+    "",
+    post_tool_protocol_tool_call_instruction(use_text_tool_fallback = use_text_tool_fallback),
+    "",
+    "Optional final-answer compatibility form:",
+    post_tool_protocol_final_answer_instruction(),
+    if (nzchar(preview)) paste0("\nPrevious non-protocol response was:\n", preview) else NULL,
+    sep = "\n"
+  )
+  list(role = "user", content = content)
+}
+
+#' @keywords internal
+native_tool_calling_enabled <- function(model) {
+  !identical(model$capabilities$native_tool_calling %||% TRUE, FALSE)
+}
+
+#' @keywords internal
+format_tools_for_text_fallback <- function(tools) {
+  if (is.null(tools) || length(tools) == 0) {
+    return("")
+  }
+
+  rendered <- vapply(tools, function(tool_obj) {
+    if (!inherits(tool_obj, "Tool")) {
+      return("")
+    }
+    schema_json <- tryCatch(
+      schema_to_json(tool_obj$parameters, pretty = TRUE),
+      error = function(e) "{}"
+    )
+    paste0(
+      "- ", tool_obj$name, ": ", tool_obj$description, "\n",
+      "  Parameters JSON schema:\n",
+      gsub("(?m)^", "  ", schema_json, perl = TRUE)
+    )
+  }, character(1))
+
+  rendered <- rendered[nzchar(rendered)]
+  paste(rendered, collapse = "\n\n")
+}
+
+#' @keywords internal
+build_text_tool_system_prompt <- function(tools) {
+  tool_defs <- format_tools_for_text_fallback(tools)
+  if (!nzchar(tool_defs)) {
+    return("")
+  }
+
+  paste(
+    "Native API tool calling is unavailable for this model/provider.",
+    "When you need a tool, emit one or more tool-call blocks in plain text using exactly this format:",
+    "<tool_call>\n{\"name\":\"tool_name\",\"arguments\":{}}\n</tool_call>",
+    "Do not wrap ordinary prose in `<tool_call>` blocks.",
+    "After tool results are provided, emit exactly one next-action block: either another `<tool_call>` block or a `<final_answer>...</final_answer>` block. Do not write prose outside those tags.",
+    paste0("Available tools:\n\n", tool_defs),
+    sep = "\n\n"
+  )
+}
+
+#' @keywords internal
+append_text_tool_result_messages <- function(messages, result, tool_results) {
+  assistant_text <- result$text %||% ""
+  if (nzchar(assistant_text) && length(result$tool_calls %||% list()) == 0) {
+    messages <- c(messages, list(list(role = "assistant", content = assistant_text)))
+  }
+
+  lines <- c("Tool execution results:")
+  for (tr in tool_results) {
+    status <- if (isTRUE(tr$is_error)) "error" else "ok"
+    lines <- c(
+      lines,
+      paste0("- ", tr$name, " [", status, "]"),
+      tr$result %||% ""
+    )
+  }
+  lines <- c(
+    lines,
+    "",
+    "Post-tool response protocol:",
+    "Return exactly one next action:",
+    "1. Continue with another tool call:",
+    "<tool_call>",
+    "{\"name\":\"tool_name\",\"arguments\":{}}",
+    "</tool_call>",
+    "2. Finish the task for the user by writing the final answer directly.",
+    "Optional compatibility form:",
+    "<final_answer>",
+    "Your final answer to the user.",
+    "</final_answer>"
+  )
+
+  messages <- c(messages, list(list(role = "user", content = paste(lines, collapse = "\n"))))
+  messages
+}
+
 #' @title Generate Text
 #' @description
 #' Generate text using a language model. This is the primary high-level function
 #' for non-streaming text generation.
 #'
-#' When tools are provided and max_steps > 1, the function will automatically
-#' execute tool calls and feed results back to the LLM in a ReAct-style loop
-#' until the LLM produces a final response or max_steps is reached.
+#' When tools are provided, the function automatically executes tool calls and
+#' feeds results back to the LLM in a task-state driven runtime. `max_steps`
+#' controls one execution window; the runtime may open another window or
+#' finalize from tool observations instead of silently stopping at the boundary.
 #'
 #' @param model Either a LanguageModelV1 object, or a string ID like "openai:gpt-4o".
 #' @param prompt A character string prompt, or a list of messages.
@@ -19,9 +516,16 @@ NULL
 #' @param temperature Sampling temperature (0-2). Default 0.7.
 #' @param max_tokens Maximum tokens to generate.
 #' @param tools Optional list of Tool objects for function calling.
-#' @param max_steps Maximum number of generation steps (tool execution loops).
-#'   Default 1 (single generation, no automatic tool execution).
-#'   Set to higher values (e.g., 5) to enable automatic tool execution.
+#' @param max_steps Number of model/tool steps in one execution window.
+#'   Default 1. The runtime treats this as a budget checkpoint, not as a hard
+#'   task stop.
+#' @param max_tool_result_errors Historical compatibility option. Tool result
+#'   errors are recorded as task observations; runtime policy decides whether
+#'   to continue, finalize, ask the user, or block.
+#' @param require_post_tool_protocol Logical. If TRUE, after any tool results
+#'   are returned the model must either make another tool call or wrap its final
+#'   answer in a `<final_answer>...</final_answer>` block. This is enabled
+#'   automatically for text-based tool fallback.
 #' @param sandbox Logical. If TRUE, enables R-native programmatic sandbox mode.
 #'   All tools are bound into an isolated R environment and replaced by a single
 #'   `execute_r_code` meta-tool. The LLM writes R code to batch-invoke tools,
@@ -60,26 +564,34 @@ generate_text <- function(model = NULL,
                           max_tokens = NULL,
                           tools = NULL,
                           max_steps = 1,
+                          max_tool_result_errors = 2,
+                          require_post_tool_protocol = FALSE,
                           sandbox = FALSE,
                           skills = NULL,
                           session = NULL,
                           hooks = NULL,
                           registry = NULL,
                           ...) {
+  requested_model_id <- if (is.character(model) && length(model) == 1) model else NULL
+  effective_model_id <- requested_model_id %||% if (is.null(model) && is.null(session)) get_model() else NULL
+  default_call_options <- if (is.null(session)) {
+    configured <- model_config_runtime_options(effective_model_id)$call_options %||% list()
+    if (is.null(model)) {
+      merge_call_options(configured, get_default_model_runtime_options()$call_options %||% list())
+    } else {
+      configured
+    }
+  } else {
+    list()
+  }
+
   # Resolve model from string ID if needed
   model <- resolve_model(model, registry, type = "language")
 
   # Handle skills parameter
   skill_registry <- NULL
   if (!is.null(skills)) {
-    if (is.character(skills)) {
-      # skills is a path, scan for skills
-      skill_registry <- create_skill_registry(skills)
-    } else if (inherits(skills, "SkillRegistry")) {
-      skill_registry <- skills
-    } else {
-      rlang::abort("skills must be a path string or SkillRegistry object.")
-    }
+    skill_registry <- coerce_skill_registry(skills, recursive = TRUE, project_dir = getwd())
 
     # Inject skill summaries into system prompt
     skill_prompt <- skill_registry$generate_prompt_section()
@@ -91,6 +603,10 @@ generate_text <- function(model = NULL,
     skill_tools <- create_skill_tools(skill_registry)
     tools <- if (is.null(tools)) skill_tools else c(tools, skill_tools)
   }
+
+  tools <- filter_tools_for_model_capabilities(tools, model, session = session)
+  use_text_tool_fallback <- !native_tool_calling_enabled(model)
+  require_post_tool_protocol <- isTRUE(require_post_tool_protocol) || isTRUE(use_text_tool_fallback)
 
   # Handle sandbox mode: bind tools into SandboxManager, replace with meta-tool
   if (isTRUE(sandbox) && !is.null(tools) && length(tools) > 0) {
@@ -111,197 +627,50 @@ generate_text <- function(model = NULL,
     hooks$trigger_generation_start(model, prompt, tools)
   }
 
+  if (isTRUE(use_text_tool_fallback) && !is.null(tools) && length(tools) > 0) {
+    tool_prompt <- build_text_tool_system_prompt(tools)
+    if (nzchar(tool_prompt)) {
+      system <- if (is.null(system)) tool_prompt else paste(system, "\n\n", tool_prompt, sep = "")
+    }
+  }
+  if (isTRUE(require_post_tool_protocol) && !is.null(tools) && length(tools) > 0) {
+    protocol_prompt <- post_tool_protocol_system_prompt(use_text_tool_fallback = use_text_tool_fallback)
+    system <- if (is.null(system)) protocol_prompt else paste(system, "\n\n", protocol_prompt, sep = "")
+  }
+
   # Build initial messages
   messages <- build_messages(prompt, system)
+  validate_model_messages(model, messages)
 
   # Build base params (tools stay constant across steps)
-  base_params <- list(
-    temperature = temperature,
-    max_tokens = max_tokens,
+  base_params <- merge_call_options(
+    default_call_options,
+    list(
+      temperature = temperature,
+      max_tokens = max_tokens,
+      tools = if (isTRUE(use_text_tool_fallback)) NULL else tools,
+      ...
+    )
+  )
+
+  initial_messages_len <- length(messages)
+  run_id <- paste0("run_", generate_stable_id("generate_text", Sys.time(), stats::runif(1)))
+
+  result <- run_agent_runtime(
+    model = model,
+    messages = messages,
+    base_params = base_params,
     tools = tools,
-    ...
+    session = session,
+    hooks = hooks,
+    stream = FALSE,
+    run_id = run_id,
+    max_steps = max_steps,
+    max_tool_result_errors = max_tool_result_errors,
+    require_post_tool_protocol = require_post_tool_protocol,
+    use_text_tool_fallback = use_text_tool_fallback,
+    initial_messages_len = initial_messages_len
   )
-
-  # Track all tool calls for debugging/logging
-  all_tool_calls <- list()
-  all_tool_results <- list()
-  step <- 0
-  result <- NULL
-
-  # Circuit breaker state
-  breaker_state <- new.env(parent = emptyenv())
-  breaker_state$consecutive_identical_calls <- 0
-  breaker_state$consecutive_tool_errors <- 0
-  breaker_state$last_tool_signature <- NULL
-  max_identical_calls <- 3 # Threshold for repeating identical tool calls
-  max_tool_errors <- 3 # Threshold for consecutive tool execution errors
-
-  # ReAct loop
-  tryCatch(
-    {
-      while (step < max_steps) {
-        step <- step + 1
-
-        # Build params with current messages
-        params <- c(list(messages = messages), base_params)
-
-        # Call the model
-        result <- model$do_generate(params)
-
-        if (isTRUE(getOption("aisdk.debug", FALSE))) {
-          message("[DEBUG] generate_text step ", step, " | finish_reason: ", result$finish_reason)
-          raw_text <- result$text %||% ""
-          message("[DEBUG] response text (", nchar(raw_text), " chars): ",
-                  substr(raw_text, 1, min(500, nchar(raw_text))),
-                  if (nchar(raw_text) > 500) "... [truncated]" else "")
-          if (!is.null(result$usage)) {
-            message("[DEBUG] usage: prompt=", result$usage$prompt_tokens,
-                    " completion=", result$usage$completion_tokens,
-                    " total=", result$usage$total_tokens)
-          }
-        }
-
-        # Check if there are tool calls to process
-        if (!is.null(result$tool_calls) && length(result$tool_calls) > 0 && !is.null(tools)) {
-          # Store tool calls
-          all_tool_calls <- c(all_tool_calls, result$tool_calls)
-
-          # If we've reached max_steps, return without executing
-          if (step >= max_steps) {
-            warning(sprintf("Maximum generation steps (%d) reached. Tool execution stopped.", max_steps))
-            break
-          }
-
-          # --- Circuit Breaker: Detect repeated identical tool calls ---
-          current_signature <- paste(
-            vapply(result$tool_calls, function(tc) {
-              paste0(tc$name, ":", safe_to_json(tc$arguments, auto_unbox = TRUE))
-            }, character(1)),
-            collapse = "|"
-          )
-          if (identical(current_signature, breaker_state$last_tool_signature)) {
-            breaker_state$consecutive_identical_calls <- breaker_state$consecutive_identical_calls + 1
-          } else {
-            breaker_state$consecutive_identical_calls <- 0
-            breaker_state$last_tool_signature <- current_signature
-          }
-          if (breaker_state$consecutive_identical_calls >= max_identical_calls) {
-            warning(
-              "Circuit breaker triggered: model repeated identical tool calls ",
-              breaker_state$consecutive_identical_calls, " times."
-            )
-            result$finish_reason <- "tool_failure"
-            break
-          }
-
-          # Execute tools (with hooks and optional session environment)
-          tool_envir <- if (!is.null(session)) session$get_envir() else NULL
-
-          # Log tool calls
-          if (interactive()) {
-            for (tc in result$tool_calls) {
-              print_tool_execution(tc$name, tc$arguments)
-            }
-          }
-
-          # --- Circuit Breaker: Detect consecutive tool execution errors ---
-          tool_results <- tryCatch(
-            {
-              res <- execute_tool_calls(result$tool_calls, tools, hooks, envir = tool_envir)
-              breaker_state$consecutive_tool_errors <- 0 # Reset on success
-              res
-            },
-            error = function(e) {
-              breaker_state$consecutive_tool_errors <- breaker_state$consecutive_tool_errors + 1
-              if (breaker_state$consecutive_tool_errors >= max_tool_errors) {
-                warning(
-                  "Circuit breaker triggered: ", breaker_state$consecutive_tool_errors,
-                  " consecutive tool execution failures. Last error: ",
-                  conditionMessage(e)
-                )
-                NULL
-              } else {
-                # Return error message as tool result so model can self-correct
-                lapply(result$tool_calls, function(tc) {
-                  list(
-                    id = tc$id,
-                    name = tc$name,
-                    result = paste0("Error executing tool: ", conditionMessage(e))
-                  )
-                })
-              }
-            }
-          )
-
-          if (is.null(tool_results)) {
-            result$finish_reason <- "tool_failure"
-            break
-          }
-          all_tool_results <- c(all_tool_results, tool_results)
-
-          # Log tool results (matching one-to-one with calls usually, but execute_tool_calls returns list)
-          if (interactive()) {
-            for (tr in tool_results) {
-              print_tool_result(
-                tr$name,
-                tr$result,
-                success = !isTRUE(tr$is_error),
-                raw_result = tr$raw_result %||% tr$result
-              )
-            }
-          }
-
-          # Append assistant message with tool_calls to history
-          # Note: We need to include the tool_calls in the assistant message for context
-          assistant_message <- list(role = "assistant", content = result$text %||% "")
-
-          history_format <- model$get_history_format()
-
-          # For OpenAI, we need to include tool_calls in the assistant message
-          if (history_format == "openai") {
-            assistant_message$tool_calls <- lapply(result$tool_calls, function(tc) {
-              list(
-                id = tc$id,
-                type = "function",
-                `function` = list(
-                  name = tc$name,
-                  arguments = safe_to_json(tc$arguments, auto_unbox = TRUE)
-                )
-              )
-            })
-          } else if (history_format == "anthropic") {
-            # For Anthropic, tool_use blocks are part of the content
-            assistant_message$content <- result$raw_response$content
-          }
-
-          messages <- c(messages, list(assistant_message))
-
-          # Append tool results to history using provider-specific formatting
-          for (tr in tool_results) {
-            tool_result_msg <- model$format_tool_result(tr$id, tr$name, tr$result)
-            messages <- c(messages, list(tool_result_msg))
-          }
-
-          # Continue loop
-        } else {
-          # No tool calls, we're done
-          break
-        }
-      }
-    },
-    error = handle_network_error
-  )
-
-  # Add step information to result for debugging
-  if (max_steps > 1) {
-    if (is.null(result)) {
-      # If result is NULL here (e.g. error in first loop), initialize it loosely so we return something
-      result <- list()
-    }
-    result$steps <- step
-    result$all_tool_calls <- all_tool_calls
-    result$all_tool_results <- all_tool_results
-  }
 
   # Trigger on_generation_end
   if (!is.null(hooks)) {
@@ -323,14 +692,27 @@ generate_text <- function(model = NULL,
 #' @param temperature Sampling temperature (0-2). Default 0.7.
 #' @param max_tokens Maximum tokens to generate.
 #' @param tools Optional list of Tool objects for function calling.
-#' @param max_steps Maximum number of generation steps (tool execution loops).
-#'   Default 1. Set to higher values (e.g., 5) to enable automatic tool execution.
+#' @param max_steps Number of model/tool steps in one execution window.
+#'   Default 1. The runtime treats this as a budget checkpoint, not as a hard
+#'   task stop.
+#' @param max_tool_result_errors Historical compatibility option. Tool result
+#'   errors are recorded as task observations; runtime policy decides whether
+#'   to continue, finalize, ask the user, or block.
+#' @param require_post_tool_protocol Logical. If TRUE, after any tool results
+#'   are returned the model must either make another tool call or wrap its final
+#'   answer in a `<final_answer>...</final_answer>` block. This is enabled
+#'   automatically for text-based tool fallback.
 #' @param sandbox Logical. If TRUE, enables R-native programmatic sandbox mode.
 #'   See \code{generate_text} for details. Default FALSE.
 #' @param skills Optional path to skills directory, or a SkillRegistry object.
 #' @param session Optional ChatSession object for shared state.
 #' @param hooks Optional HookHandler object.
 #' @param registry Optional ProviderRegistry to use.
+#' @param renderer Optional [Renderer] for agent output. Defaults to the cli
+#'   terminal backend ([create_stream_renderer()]); pass any Renderer-conforming
+#'   object (e.g. from a web UI, [create_capture_renderer()], or
+#'   [create_null_renderer()]) to render agent output elsewhere.
+#' @param .stream_event_callback Internal callback for typed stream events.
 #' @param ... Additional arguments passed to the model.
 #' @return A GenerateResult object (accumulated from the stream).
 #' @export
@@ -351,25 +733,35 @@ stream_text <- function(model = NULL,
                         max_tokens = NULL,
                         tools = NULL,
                         max_steps = 1,
+                        max_tool_result_errors = 2,
+                        require_post_tool_protocol = FALSE,
                         sandbox = FALSE,
                         skills = NULL,
                         session = NULL,
                         hooks = NULL,
                         registry = NULL,
+                        renderer = NULL,
+                        .stream_event_callback = NULL,
                         ...) {
+  requested_model_id <- if (is.character(model) && length(model) == 1) model else NULL
+  effective_model_id <- requested_model_id %||% if (is.null(model) && is.null(session)) get_model() else NULL
+  default_call_options <- if (is.null(session)) {
+    configured <- model_config_runtime_options(effective_model_id)$call_options %||% list()
+    if (is.null(model)) {
+      merge_call_options(configured, get_default_model_runtime_options()$call_options %||% list())
+    } else {
+      configured
+    }
+  } else {
+    list()
+  }
+
   model <- resolve_model(model, registry, type = "language")
 
   # Handle skills parameter
   skill_registry <- NULL
   if (!is.null(skills)) {
-    if (is.character(skills)) {
-      # skills is a path, scan for skills
-      skill_registry <- create_skill_registry(skills)
-    } else if (inherits(skills, "SkillRegistry")) {
-      skill_registry <- skills
-    } else {
-      rlang::abort("skills must be a path string or SkillRegistry object.")
-    }
+    skill_registry <- coerce_skill_registry(skills, recursive = TRUE, project_dir = getwd())
 
     # Inject skill summaries into system prompt
     skill_prompt <- skill_registry$generate_prompt_section()
@@ -381,6 +773,10 @@ stream_text <- function(model = NULL,
     skill_tools <- create_skill_tools(skill_registry)
     tools <- if (is.null(tools)) skill_tools else c(tools, skill_tools)
   }
+
+  tools <- filter_tools_for_model_capabilities(tools, model, session = session)
+  use_text_tool_fallback <- !native_tool_calling_enabled(model)
+  require_post_tool_protocol <- isTRUE(require_post_tool_protocol) || isTRUE(use_text_tool_fallback)
 
   # Handle sandbox mode: bind tools into SandboxManager, replace with meta-tool
   if (isTRUE(sandbox) && !is.null(tools) && length(tools) > 0) {
@@ -401,202 +797,59 @@ stream_text <- function(model = NULL,
     hooks$trigger_generation_start(model, prompt, tools)
   }
 
-  messages <- build_messages(prompt, system)
-
-  # Build base params
-  base_params <- list(
-    temperature = temperature,
-    max_tokens = max_tokens,
-    tools = tools,
-    ...
-  )
-
-  all_tool_calls <- list()
-  all_tool_results <- list()
-  step <- 0
-  result <- NULL
-
-  renderer <- create_stream_renderer()
-
-  # Circuit breaker state
-  breaker_state <- new.env(parent = emptyenv())
-  breaker_state$consecutive_identical_calls <- 0
-  breaker_state$consecutive_tool_errors <- 0
-  breaker_state$last_tool_signature <- NULL
-  max_identical_calls <- 3
-  max_tool_errors <- 3
-
-  # ReAct loop for streaming
-  tryCatch(
-    {
-      while (step < max_steps) {
-        step <- step + 1
-
-        # Build params with current messages
-        params <- c(list(messages = messages), base_params)
-
-        # Call the model via do_stream
-        if (interactive()) renderer$start_thinking()
-
-        result <- model$do_stream(params, function(chunk, done) {
-          if (interactive()) {
-            if (!is.null(callback)) {
-              renderer$stop_thinking()
-            } else {
-              renderer$process_chunk(chunk, done)
-            }
-          }
-          if (!is.null(callback)) callback(chunk, done)
-        })
-
-        # Check if there are tool calls to process
-        if (!is.null(result$tool_calls) && length(result$tool_calls) > 0 && !is.null(tools)) {
-          # Store tool calls
-          all_tool_calls <- c(all_tool_calls, result$tool_calls)
-
-          # If we've reached max_steps, return without executing
-          if (step >= max_steps) {
-            warning(sprintf("Maximum generation steps (%d) reached. Tool execution stopped.", max_steps))
-            break
-          }
-
-          # --- Circuit Breaker: Detect repeated identical tool calls ---
-          current_signature <- paste(
-            vapply(result$tool_calls, function(tc) {
-              paste0(tc$name, ":", safe_to_json(tc$arguments, auto_unbox = TRUE))
-            }, character(1)),
-            collapse = "|"
-          )
-          if (identical(current_signature, breaker_state$last_tool_signature)) {
-            breaker_state$consecutive_identical_calls <- breaker_state$consecutive_identical_calls + 1
-          } else {
-            breaker_state$consecutive_identical_calls <- 0
-            breaker_state$last_tool_signature <- current_signature
-          }
-          if (breaker_state$consecutive_identical_calls >= max_identical_calls) {
-            warning(
-              "Circuit breaker triggered: model repeated identical tool calls ",
-              breaker_state$consecutive_identical_calls, " times."
-            )
-            result$finish_reason <- "tool_failure"
-            break
-          }
-
-          # Execute tools (with hooks and optional session environment)
-          tool_envir <- if (!is.null(session)) session$get_envir() else NULL
-
-          # Log tool calls
-          if (interactive()) {
-            for (tc in result$tool_calls) {
-              renderer$render_tool_start(tc$name, tc$arguments)
-            }
-          }
-
-          # --- Circuit Breaker: Detect consecutive tool execution errors ---
-          tool_results <- tryCatch(
-            {
-              res <- execute_tool_calls(result$tool_calls, tools, hooks, envir = tool_envir)
-              breaker_state$consecutive_tool_errors <- 0
-              res
-            },
-            error = function(e) {
-              breaker_state$consecutive_tool_errors <- breaker_state$consecutive_tool_errors + 1
-              if (breaker_state$consecutive_tool_errors >= max_tool_errors) {
-                warning(
-                  "Circuit breaker triggered: ", breaker_state$consecutive_tool_errors,
-                  " consecutive tool execution failures. Last error: ",
-                  conditionMessage(e)
-                )
-                NULL
-              } else {
-                lapply(result$tool_calls, function(tc) {
-                  list(
-                    id = tc$id,
-                    name = tc$name,
-                    result = paste0("Error executing tool: ", conditionMessage(e))
-                  )
-                })
-              }
-            }
-          )
-
-          if (is.null(tool_results)) {
-            result$finish_reason <- "tool_failure"
-            break
-          }
-          all_tool_results <- c(all_tool_results, tool_results)
-
-          # Log tool results
-          if (interactive()) {
-            for (tr in tool_results) {
-              renderer$render_tool_result(
-                tr$name,
-                tr$result,
-                success = !isTRUE(tr$is_error),
-                raw_result = tr$raw_result %||% tr$result
-              )
-            }
-          }
-
-          # Append assistant message with tool_calls to history
-          assistant_message <- list(role = "assistant", content = result$text %||% "")
-
-          history_format <- model$get_history_format()
-
-          # Provider-specific tool call formatting (copied from generate_text)
-          if (history_format == "openai") {
-            assistant_message$tool_calls <- lapply(result$tool_calls, function(tc) {
-              list(
-                id = tc$id,
-                type = "function",
-                `function` = list(
-                  name = tc$name,
-                  arguments = safe_to_json(tc$arguments, auto_unbox = TRUE)
-                )
-              )
-            })
-          } else if (history_format == "anthropic") {
-            assistant_message$content <- result$raw_response$content
-          }
-
-          messages <- c(messages, list(assistant_message))
-
-          # Append tool results to history
-          for (tr in tool_results) {
-            tool_result_msg <- model$format_tool_result(tr$id, tr$name, tr$result)
-            messages <- c(messages, list(tool_result_msg))
-          }
-
-          # Reset renderer state for next step
-          if (interactive()) {
-            renderer$reset_for_new_step()
-          }
-
-          # Continue loop - next iteration will stream the response to the tool output
-        } else {
-          # No tool calls, we're done
-          break
-        }
-      }
-    },
-    error = handle_network_error
-  )
-
-  # Add step info
-  if (max_steps > 1) {
-    if (is.null(result)) {
-      result <- list() # fallback
-    }
-    result$steps <- step
-    result$all_tool_calls <- all_tool_calls
-    result$all_tool_results <- all_tool_results
-    # Return messages added during tool execution for session history sync
-    # Calculate which messages were added (everything after the initial prompt)
-    initial_len <- length(build_messages(prompt, system))
-    if (length(messages) > initial_len) {
-      result$messages_added <- messages[(initial_len + 1):length(messages)]
+  if (isTRUE(use_text_tool_fallback) && !is.null(tools) && length(tools) > 0) {
+    tool_prompt <- build_text_tool_system_prompt(tools)
+    if (nzchar(tool_prompt)) {
+      system <- if (is.null(system)) tool_prompt else paste(system, "\n\n", tool_prompt, sep = "")
     }
   }
+  if (isTRUE(require_post_tool_protocol) && !is.null(tools) && length(tools) > 0) {
+    protocol_prompt <- post_tool_protocol_system_prompt(use_text_tool_fallback = use_text_tool_fallback)
+    system <- if (is.null(system)) protocol_prompt else paste(system, "\n\n", protocol_prompt, sep = "")
+  }
+
+  messages <- build_messages(prompt, system)
+  validate_model_messages(model, messages)
+
+  # Build base params
+  base_params <- merge_call_options(
+    default_call_options,
+    list(
+      temperature = temperature,
+      max_tokens = max_tokens,
+      tools = if (isTRUE(use_text_tool_fallback)) NULL else tools,
+      ...
+    )
+  )
+
+  initial_messages_len <- length(messages)
+  run_id <- paste0("run_", generate_stable_id("stream_text", Sys.time(), stats::runif(1)))
+
+  # Agent output is rendered through the UI-agnostic Renderer contract. Default
+  # to the built-in cli/terminal backend; callers (e.g. aisdk.shiny, a custom UI,
+  # or a capture/null renderer) can inject any Renderer-conforming object.
+  if (is.null(renderer)) {
+    renderer <- create_stream_renderer()
+  }
+
+  result <- run_agent_runtime(
+    model = model,
+    messages = messages,
+    base_params = base_params,
+    tools = tools,
+    session = session,
+    hooks = hooks,
+    stream = TRUE,
+    callback = callback,
+    renderer = renderer,
+    run_id = run_id,
+    max_steps = max_steps,
+    max_tool_result_errors = max_tool_result_errors,
+    require_post_tool_protocol = require_post_tool_protocol,
+    use_text_tool_fallback = use_text_tool_fallback,
+    initial_messages_len = initial_messages_len,
+    stream_event_callback = .stream_event_callback
+  )
 
   # Trigger on_generation_end
   if (!is.null(hooks)) {
@@ -631,17 +884,9 @@ create_embeddings <- function(model, value, registry = NULL) {
 # --- Internal Helper Functions ---
 
 #' @keywords internal
-handle_network_error <- function(e) {
+handle_network_error <- function(e, rethrow = TRUE) {
   # Check for common network error patterns
-  msg <- conditionMessage(e)
-  is_network_error <- any(sapply(c(
-    "cannot open the connection",
-    "Failed to perform HTTP request",
-    "timeout",
-    "operation timed out",
-    "Connection reset",
-    "host unreachable"
-  ), function(p) grepl(p, msg, ignore.case = TRUE)))
+  is_network_error <- is_network_error_condition(e)
 
   if (is_network_error) {
     if (requireNamespace("cli", quietly = TRUE)) {
@@ -660,17 +905,22 @@ handle_network_error <- function(e) {
     }
   }
 
-  # Re-throw to allow programmatic handling if needed
-  rlang::cnd_signal(e)
+  if (isTRUE(rethrow)) {
+    rlang::cnd_signal(e)
+  }
+
+  invisible(is_network_error)
 }
 
 #' @keywords internal
-resolve_model <- function(model, registry = NULL, type = c("language", "embedding")) {
+resolve_model <- function(model, registry = NULL, type = c("language", "embedding", "image")) {
   type <- match.arg(type)
 
   if (is.null(model)) {
     if (type == "language") {
       model <- get_model()
+    } else if (type == "image") {
+      rlang::abort("No image model configured. Please supply `model` explicitly.")
     } else {
       rlang::abort("No embedding model configured. Please supply `model` explicitly.")
     }
@@ -681,18 +931,174 @@ resolve_model <- function(model, registry = NULL, type = c("language", "embeddin
     reg <- registry %||% get_default_registry()
     if (type == "language") {
       model <- reg$language_model(model)
+    } else if (type == "image") {
+      model <- reg$image_model(model)
     } else {
       model <- reg$embedding_model(model)
     }
   }
 
   # Validate model type
-  expected_class <- if (type == "language") "LanguageModelV1" else "EmbeddingModelV1"
+  expected_class <- switch(type,
+    language = "LanguageModelV1",
+    embedding = "EmbeddingModelV1",
+    image = "ImageModelV1"
+  )
   if (!inherits(model, expected_class)) {
     rlang::abort(paste0("Expected a ", expected_class, " object."))
   }
 
+  if (identical(type, "language")) {
+    model <- enrich_language_model_capabilities(model)
+  }
+
   model
+}
+
+#' @keywords internal
+enrich_language_model_capabilities <- function(model) {
+  if (!inherits(model, "LanguageModelV1")) {
+    return(model)
+  }
+
+  provider <- model$provider %||% NULL
+  model_id <- model$model_id %||% NULL
+  if (is.null(provider) || is.null(model_id) || !nzchar(provider) || !nzchar(model_id)) {
+    return(model)
+  }
+
+  info <- tryCatch(
+    get_model_info(provider, model_id),
+    error = function(e) NULL
+  )
+  config_caps <- info$capabilities %||% list()
+  if (length(config_caps) == 0) {
+    return(model)
+  }
+
+  model$capabilities <- utils::modifyList(
+    config_caps,
+    model$capabilities %||% list(),
+    keep.null = TRUE
+  )
+  model
+}
+
+#' @keywords internal
+model_capability_value <- function(model, capability, registry = NULL) {
+  if (inherits(model, "LanguageModelV1")) {
+    model <- enrich_language_model_capabilities(model)
+    caps <- model$capabilities %||% list()
+    return(caps[[capability]] %||% NULL)
+  }
+
+  if (!is.character(model) || length(model) == 0 || !nzchar(model[[1]])) {
+    return(NULL)
+  }
+
+  model_id <- model[[1]]
+  sep_pos <- regexpr(":", model_id, fixed = TRUE)
+  if (sep_pos < 1) {
+    return(NULL)
+  }
+
+  provider <- substr(model_id, 1, sep_pos - 1)
+  provider_model <- substr(model_id, sep_pos + 1, nchar(model_id))
+  info <- tryCatch(
+    get_model_info(provider, provider_model),
+    error = function(e) NULL
+  )
+  caps <- info$capabilities %||% list()
+  caps[[capability]] %||% NULL
+}
+
+#' @keywords internal
+model_capability_explicitly_unavailable <- function(model, capability, registry = NULL) {
+  identical(model_capability_value(model, capability, registry = registry), FALSE)
+}
+
+#' @keywords internal
+tool_required_model_capabilities <- function(tool_obj) {
+  if (is.null(tool_obj) || is.null(tool_obj$meta) || !is.list(tool_obj$meta)) {
+    return(character(0))
+  }
+
+  req <- tool_obj$meta$required_model_capabilities %||%
+    tool_obj$meta$requires_model_capabilities %||%
+    character(0)
+  unique(as.character(req))
+}
+
+#' @keywords internal
+tool_model_capability_route <- function(tool_obj) {
+  if (is.null(tool_obj) || is.null(tool_obj$meta) || !is.list(tool_obj$meta)) {
+    return(NULL)
+  }
+
+  route <- tool_obj$meta$model_capability_route %||%
+    tool_obj$meta$capability_model_route %||%
+    tool_obj$meta$model_route %||%
+    NULL
+
+  if (is.null(route) || !is.character(route) || length(route) != 1 || !nzchar(trimws(route))) {
+    return(NULL)
+  }
+  normalize_capability_name(route)
+}
+
+#' @keywords internal
+tool_has_compatible_capability_route <- function(tool_obj, required_model_capabilities, session = NULL) {
+  route <- tool_model_capability_route(tool_obj)
+  if (is.null(route)) {
+    return(FALSE)
+  }
+
+  selected <- select_model_ref_for_capability(
+    capability = route,
+    session = session,
+    fallback_model = NULL,
+    default_model = NULL
+  )
+  if (is.null(selected$model)) {
+    return(FALSE)
+  }
+
+  !any(vapply(
+    required_model_capabilities,
+    function(capability) model_ref_capability_explicitly_unavailable(selected$model, capability),
+    logical(1)
+  ))
+}
+
+#' @keywords internal
+filter_tools_for_model_capabilities <- function(tools, model, session = NULL) {
+  if (is.null(tools) || length(tools) == 0) {
+    return(tools)
+  }
+
+  filtered <- Filter(function(tool_obj) {
+    req <- tool_required_model_capabilities(tool_obj)
+    if (length(req) == 0) {
+      return(TRUE)
+    }
+
+    unavailable <- vapply(
+      req,
+      function(capability) model_capability_explicitly_unavailable(model, capability),
+      logical(1)
+    )
+
+    if (!any(unavailable)) {
+      return(TRUE)
+    }
+
+    tool_has_compatible_capability_route(tool_obj, req, session = session)
+  }, tools)
+
+  if (length(filtered) == 0) {
+    return(list())
+  }
+  filtered
 }
 
 #' @keywords internal
@@ -715,6 +1121,24 @@ build_messages <- function(prompt, system = NULL) {
   }
 
   messages
+}
+
+#' @keywords internal
+build_messages_added <- function(messages, initial_len, final_text = NULL, final_reasoning = NULL) {
+  messages_added <- list()
+  if (length(messages) > initial_len) {
+    messages_added <- messages[(initial_len + 1):length(messages)]
+  }
+
+  if (!is.null(final_text) && nzchar(final_text)) {
+    final_message <- list(role = "assistant", content = final_text)
+    if (!is.null(final_reasoning) && nzchar(final_reasoning)) {
+      final_message$reasoning <- final_reasoning
+    }
+    messages_added <- c(messages_added, list(final_message))
+  }
+
+  messages_added
 }
 
 # Null-coalescing operator (if not already defined)

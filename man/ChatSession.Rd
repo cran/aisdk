@@ -13,12 +13,23 @@ conversation history, supports tool execution, and provides persistence.
 \item \href{#method-ChatSession-new}{\code{ChatSession$new()}}
 \item \href{#method-ChatSession-send}{\code{ChatSession$send()}}
 \item \href{#method-ChatSession-send_stream}{\code{ChatSession$send_stream()}}
+\item \href{#method-ChatSession-continue_run}{\code{ChatSession$continue_run()}}
 \item \href{#method-ChatSession-append_message}{\code{ChatSession$append_message()}}
 \item \href{#method-ChatSession-get_history}{\code{ChatSession$get_history()}}
 \item \href{#method-ChatSession-get_last_response}{\code{ChatSession$get_last_response()}}
 \item \href{#method-ChatSession-clear_history}{\code{ChatSession$clear_history()}}
 \item \href{#method-ChatSession-switch_model}{\code{ChatSession$switch_model()}}
+\item \href{#method-ChatSession-get_model_options}{\code{ChatSession$get_model_options()}}
+\item \href{#method-ChatSession-get_model_call_options}{\code{ChatSession$get_model_call_options()}}
+\item \href{#method-ChatSession-set_model_options}{\code{ChatSession$set_model_options()}}
+\item \href{#method-ChatSession-clear_model_options}{\code{ChatSession$clear_model_options()}}
+\item \href{#method-ChatSession-set_capability_model}{\code{ChatSession$set_capability_model()}}
+\item \href{#method-ChatSession-get_capability_model}{\code{ChatSession$get_capability_model()}}
+\item \href{#method-ChatSession-list_capability_models}{\code{ChatSession$list_capability_models()}}
+\item \href{#method-ChatSession-clear_capability_model}{\code{ChatSession$clear_capability_model()}}
 \item \href{#method-ChatSession-get_model_id}{\code{ChatSession$get_model_id()}}
+\item \href{#method-ChatSession-get_model}{\code{ChatSession$get_model()}}
+\item \href{#method-ChatSession-get_tools}{\code{ChatSession$get_tools()}}
 \item \href{#method-ChatSession-stats}{\code{ChatSession$stats()}}
 \item \href{#method-ChatSession-save}{\code{ChatSession$save()}}
 \item \href{#method-ChatSession-as_list}{\code{ChatSession$as_list()}}
@@ -26,12 +37,27 @@ conversation history, supports tool execution, and provides persistence.
 \item \href{#method-ChatSession-restore_from_list}{\code{ChatSession$restore_from_list()}}
 \item \href{#method-ChatSession-print}{\code{ChatSession$print()}}
 \item \href{#method-ChatSession-get_memory}{\code{ChatSession$get_memory()}}
+\item \href{#method-ChatSession-get_run_state}{\code{ChatSession$get_run_state()}}
+\item \href{#method-ChatSession-set_run_state}{\code{ChatSession$set_run_state()}}
 \item \href{#method-ChatSession-set_memory}{\code{ChatSession$set_memory()}}
 \item \href{#method-ChatSession-list_memory}{\code{ChatSession$list_memory()}}
 \item \href{#method-ChatSession-get_metadata}{\code{ChatSession$get_metadata()}}
 \item \href{#method-ChatSession-set_metadata}{\code{ChatSession$set_metadata()}}
 \item \href{#method-ChatSession-merge_metadata}{\code{ChatSession$merge_metadata()}}
 \item \href{#method-ChatSession-list_metadata}{\code{ChatSession$list_metadata()}}
+\item \href{#method-ChatSession-get_context_state}{\code{ChatSession$get_context_state()}}
+\item \href{#method-ChatSession-set_context_state}{\code{ChatSession$set_context_state()}}
+\item \href{#method-ChatSession-clear_context_state}{\code{ChatSession$clear_context_state()}}
+\item \href{#method-ChatSession-get_context_management_mode}{\code{ChatSession$get_context_management_mode()}}
+\item \href{#method-ChatSession-get_context_management_config}{\code{ChatSession$get_context_management_config()}}
+\item \href{#method-ChatSession-set_context_management_mode}{\code{ChatSession$set_context_management_mode()}}
+\item \href{#method-ChatSession-set_context_management_config}{\code{ChatSession$set_context_management_config()}}
+\item \href{#method-ChatSession-get_context_metrics}{\code{ChatSession$get_context_metrics()}}
+\item \href{#method-ChatSession-assemble_messages}{\code{ChatSession$assemble_messages()}}
+\item \href{#method-ChatSession-refresh_context_state}{\code{ChatSession$refresh_context_state()}}
+\item \href{#method-ChatSession-list_context_handles}{\code{ChatSession$list_context_handles()}}
+\item \href{#method-ChatSession-create_context_query_tools}{\code{ChatSession$create_context_query_tools()}}
+\item \href{#method-ChatSession-sub_session_query}{\code{ChatSession$sub_session_query()}}
 \item \href{#method-ChatSession-clear_memory}{\code{ChatSession$clear_memory()}}
 \item \href{#method-ChatSession-get_envir}{\code{ChatSession$get_envir()}}
 \item \href{#method-ChatSession-eval_in_session}{\code{ChatSession$eval_in_session()}}
@@ -134,7 +160,41 @@ Send a message with streaming output.
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-Invisible NULL (output is via callback).
+The GenerateResult object invisibly (output is via callback).
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-ChatSession-continue_run"></a>}}
+\if{latex}{\out{\hypertarget{method-ChatSession-continue_run}{}}}
+\subsection{Method \code{continue_run()}}{
+Inject a manual continuation instruction into the current task.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ChatSession$continue_run(
+  action = "continue",
+  guidance = NULL,
+  stream = TRUE,
+  callback = NULL,
+  ...
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{action}}{One of "continue", "give_up", "avoid_tool", "explain", or "manual".}
+
+\item{\code{guidance}}{Optional operator guidance to include in the continuation.}
+
+\item{\code{stream}}{Whether to use streaming generation.}
+
+\item{\code{callback}}{Streaming callback when \code{stream = TRUE}.}
+
+\item{\code{...}}{Additional arguments passed to send/send_stream.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+The GenerateResult object, or an invisible waiting-user result for manual action.
 }
 }
 \if{html}{\out{<hr>}}
@@ -219,6 +279,178 @@ Switch to a different model.
 }
 }
 \if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-ChatSession-get_model_options"></a>}}
+\if{latex}{\out{\hypertarget{method-ChatSession-get_model_options}{}}}
+\subsection{Method \code{get_model_options()}}{
+Get model runtime options for this session.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ChatSession$get_model_options()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+A list with context overrides and call options.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-ChatSession-get_model_call_options"></a>}}
+\if{latex}{\out{\hypertarget{method-ChatSession-get_model_call_options}{}}}
+\subsection{Method \code{get_model_call_options()}}{
+Get generation options applied to every model call.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ChatSession$get_model_call_options()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+A named list of call options.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-ChatSession-set_model_options"></a>}}
+\if{latex}{\out{\hypertarget{method-ChatSession-set_model_options}{}}}
+\subsection{Method \code{set_model_options()}}{
+Set runtime options for this session's model.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ChatSession$set_model_options(
+  context_window = NULL,
+  max_output_tokens = NULL,
+  max_tokens = NULL,
+  thinking = NULL,
+  thinking_budget = NULL,
+  reasoning_effort = NULL,
+  reset = FALSE
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{context_window}}{Optional context-window override.}
+
+\item{\code{max_output_tokens}}{Optional maximum output-token metadata override.}
+
+\item{\code{max_tokens}}{Optional default generation token limit.}
+
+\item{\code{thinking}}{Optional default thinking-mode value.}
+
+\item{\code{thinking_budget}}{Optional default thinking budget.}
+
+\item{\code{reasoning_effort}}{Optional default reasoning effort.}
+
+\item{\code{reset}}{Logical. If TRUE, clears all model runtime options first.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+Invisible self for chaining.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-ChatSession-clear_model_options"></a>}}
+\if{latex}{\out{\hypertarget{method-ChatSession-clear_model_options}{}}}
+\subsection{Method \code{clear_model_options()}}{
+Clear model runtime options for this session.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ChatSession$clear_model_options(keys = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{keys}}{Optional option names to clear. If NULL, clears all.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+Invisible self for chaining.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-ChatSession-set_capability_model"></a>}}
+\if{latex}{\out{\hypertarget{method-ChatSession-set_capability_model}{}}}
+\subsection{Method \code{set_capability_model()}}{
+Set a model route for a session capability.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ChatSession$set_capability_model(
+  capability,
+  model,
+  type = "auto",
+  required_model_capabilities = NULL
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{capability}}{Capability route name, such as "vision.inspect".}
+
+\item{\code{model}}{Model ID string or model object. Passing NULL clears the route.}
+
+\item{\code{type}}{Model type: "auto", "language", "embedding", or "image".}
+
+\item{\code{required_model_capabilities}}{Optional required model capability flags.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+Invisible self for chaining.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-ChatSession-get_capability_model"></a>}}
+\if{latex}{\out{\hypertarget{method-ChatSession-get_capability_model}{}}}
+\subsection{Method \code{get_capability_model()}}{
+Get the configured model for a session capability.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ChatSession$get_capability_model(capability, default = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{capability}}{Capability route name.}
+
+\item{\code{default}}{Value returned when no route is configured.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A model ID string, model object, or default.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-ChatSession-list_capability_models"></a>}}
+\if{latex}{\out{\hypertarget{method-ChatSession-list_capability_models}{}}}
+\subsection{Method \code{list_capability_models()}}{
+List session capability model routes.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ChatSession$list_capability_models()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+A data frame of configured session routes.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-ChatSession-clear_capability_model"></a>}}
+\if{latex}{\out{\hypertarget{method-ChatSession-clear_capability_model}{}}}
+\subsection{Method \code{clear_capability_model()}}{
+Clear one or all session capability model routes.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ChatSession$clear_capability_model(capability = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{capability}}{Optional route name. If NULL, clears all routes.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+Invisible self for chaining.
+}
+}
+\if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-ChatSession-get_model_id"></a>}}
 \if{latex}{\out{\hypertarget{method-ChatSession-get_model_id}{}}}
 \subsection{Method \code{get_model_id()}}{
@@ -229,6 +461,32 @@ Get current model identifier.
 
 \subsection{Returns}{
 Model ID string.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-ChatSession-get_model"></a>}}
+\if{latex}{\out{\hypertarget{method-ChatSession-get_model}{}}}
+\subsection{Method \code{get_model()}}{
+Get the resolved language model for this session.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ChatSession$get_model()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+A \code{LanguageModelV1} object.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-ChatSession-get_tools"></a>}}
+\if{latex}{\out{\hypertarget{method-ChatSession-get_tools}{}}}
+\subsection{Method \code{get_tools()}}{
+Get tools configured on this session.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ChatSession$get_tools()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+A list of \code{Tool} objects.
 }
 }
 \if{html}{\out{<hr>}}
@@ -345,6 +603,39 @@ The stored value or default.
 }
 }
 \if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-ChatSession-get_run_state"></a>}}
+\if{latex}{\out{\hypertarget{method-ChatSession-get_run_state}{}}}
+\subsection{Method \code{get_run_state()}}{
+Return the most recent structured run state.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ChatSession$get_run_state()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+A run state list.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-ChatSession-set_run_state"></a>}}
+\if{latex}{\out{\hypertarget{method-ChatSession-set_run_state}{}}}
+\subsection{Method \code{set_run_state()}}{
+Store the current structured run state.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ChatSession$set_run_state(run_state)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{run_state}}{A run state list.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+Invisible self.
+}
+}
+\if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-ChatSession-set_memory"></a>}}
 \if{latex}{\out{\hypertarget{method-ChatSession-set_memory}{}}}
 \subsection{Method \code{set_memory()}}{
@@ -454,6 +745,231 @@ List metadata keys.
 
 \subsection{Returns}{
 Character vector of metadata keys.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-ChatSession-get_context_state"></a>}}
+\if{latex}{\out{\hypertarget{method-ChatSession-get_context_state}{}}}
+\subsection{Method \code{get_context_state()}}{
+Get the adaptive context state for this session.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ChatSession$get_context_state()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+A normalized context state list.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-ChatSession-set_context_state"></a>}}
+\if{latex}{\out{\hypertarget{method-ChatSession-set_context_state}{}}}
+\subsection{Method \code{set_context_state()}}{
+Store adaptive context state for this session.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ChatSession$set_context_state(state)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{state}}{Context state list.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+Invisible self for chaining.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-ChatSession-clear_context_state"></a>}}
+\if{latex}{\out{\hypertarget{method-ChatSession-clear_context_state}{}}}
+\subsection{Method \code{clear_context_state()}}{
+Clear adaptive context state back to defaults.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ChatSession$clear_context_state()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+Invisible self for chaining.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-ChatSession-get_context_management_mode"></a>}}
+\if{latex}{\out{\hypertarget{method-ChatSession-get_context_management_mode}{}}}
+\subsection{Method \code{get_context_management_mode()}}{
+Get the context management mode for this session.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ChatSession$get_context_management_mode()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+One of "off", "basic", or "adaptive".
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-ChatSession-get_context_management_config"></a>}}
+\if{latex}{\out{\hypertarget{method-ChatSession-get_context_management_config}{}}}
+\subsection{Method \code{get_context_management_config()}}{
+Get the full adaptive context-management configuration.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ChatSession$get_context_management_config()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+A normalized context-management configuration list.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-ChatSession-set_context_management_mode"></a>}}
+\if{latex}{\out{\hypertarget{method-ChatSession-set_context_management_mode}{}}}
+\subsection{Method \code{set_context_management_mode()}}{
+Override the context management mode for this session.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ChatSession$set_context_management_mode(mode)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{mode}}{One of "off", "basic", or "adaptive".}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+Invisible self for chaining.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-ChatSession-set_context_management_config"></a>}}
+\if{latex}{\out{\hypertarget{method-ChatSession-set_context_management_config}{}}}
+\subsection{Method \code{set_context_management_config()}}{
+Apply adaptive context-management configuration to this session.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ChatSession$set_context_management_config(config = NULL, ...)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{config}}{Optional config list created by \code{create_context_management_config()}.}
+
+\item{\code{...}}{Optional overrides forwarded to \code{set_context_management_config()}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+Invisible self for chaining.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-ChatSession-get_context_metrics"></a>}}
+\if{latex}{\out{\hypertarget{method-ChatSession-get_context_metrics}{}}}
+\subsection{Method \code{get_context_metrics()}}{
+Estimate current context metrics for this session.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ChatSession$get_context_metrics(turn_system_prompt = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{turn_system_prompt}}{Optional turn-specific system prompt to include in the estimate.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A list of context metrics, or NULL if no model metadata is available.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-ChatSession-assemble_messages"></a>}}
+\if{latex}{\out{\hypertarget{method-ChatSession-assemble_messages}{}}}
+\subsection{Method \code{assemble_messages()}}{
+Build a budget-aware prompt payload from current session history.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ChatSession$assemble_messages(turn_system_prompt = NULL)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{turn_system_prompt}}{Optional turn-specific system prompt.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A list with \code{messages}, \code{system}, \code{metrics}, and \code{state}.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-ChatSession-refresh_context_state"></a>}}
+\if{latex}{\out{\hypertarget{method-ChatSession-refresh_context_state}{}}}
+\subsection{Method \code{refresh_context_state()}}{
+Refresh the adaptive context state from current history.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ChatSession$refresh_context_state(
+  generation_result = NULL,
+  turn_system_prompt = NULL
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{generation_result}}{Optional GenerateResult used to update tool/artifact digests.}
+
+\item{\code{turn_system_prompt}}{Optional turn-specific system prompt for the snapshot.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+The normalized context state list.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-ChatSession-list_context_handles"></a>}}
+\if{latex}{\out{\hypertarget{method-ChatSession-list_context_handles}{}}}
+\subsection{Method \code{list_context_handles()}}{
+List compact context handles available to this session.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ChatSession$list_context_handles()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+A list of context handle records.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-ChatSession-create_context_query_tools"></a>}}
+\if{latex}{\out{\hypertarget{method-ChatSession-create_context_query_tools}{}}}
+\subsection{Method \code{create_context_query_tools()}}{
+Create context query tools bound to this session.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ChatSession$create_context_query_tools()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+A list of \code{Tool} objects.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-ChatSession-sub_session_query"></a>}}
+\if{latex}{\out{\hypertarget{method-ChatSession-sub_session_query}{}}}
+\subsection{Method \code{sub_session_query()}}{
+Run a bounded child session for a focused query.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ChatSession$sub_session_query(...)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{...}}{Arguments passed to \code{sub_session_query()}.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A compact sub-session result list.
 }
 }
 \if{html}{\out{<hr>}}

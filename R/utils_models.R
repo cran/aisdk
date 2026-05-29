@@ -11,26 +11,10 @@ NULL
 #' @return A list representing the parsed JSON of models per provider.
 #' @keywords internal
 load_models_config <- function() {
-    config_dir <- system.file("extdata", "models", package = "aisdk")
-    if (config_dir == "" || !dir.exists(config_dir)) {
-        # Fallback for development/devtools mode
-        if (dir.exists("inst/extdata/models")) {
-            config_dir <- "inst/extdata/models"
-        } else if (dir.exists(file.path("..", "inst", "extdata", "models"))) {
-            config_dir <- file.path("..", "inst", "extdata", "models")
-        } else {
-            # Last resort: search for the directory
-            possible_paths <- c(
-                file.path(getwd(), "inst/extdata/models"),
-                file.path(getwd(), "extdata/models")
-            )
-            for (p in possible_paths) {
-                if (dir.exists(p)) {
-                    config_dir <- p
-                    break
-                }
-            }
-        }
+    config_dir <- find_source_models_config_dir()
+
+    if (is.null(config_dir)) {
+        config_dir <- system.file("extdata", "models", package = "aisdk")
     }
 
     if (config_dir == "" || !dir.exists(config_dir)) {
@@ -50,6 +34,33 @@ load_models_config <- function() {
     }
 
     config
+}
+
+find_source_models_config_dir <- function(start = getwd()) {
+    current <- normalizePath(start, mustWork = FALSE)
+
+    repeat {
+        desc_path <- file.path(current, "DESCRIPTION")
+        config_dir <- file.path(current, "inst", "extdata", "models")
+
+        if (file.exists(desc_path) && dir.exists(config_dir)) {
+            package <- tryCatch(
+                read.dcf(desc_path, fields = "Package")[[1]],
+                error = function(e) NA_character_
+            )
+            if (identical(package, "aisdk")) {
+                return(config_dir)
+            }
+        }
+
+        parent <- dirname(current)
+        if (identical(parent, current)) {
+            break
+        }
+        current <- parent
+    }
+
+    NULL
 }
 
 # --- Helper to safely extract nested fields ---
@@ -88,8 +99,14 @@ list_models <- function(provider = NULL) {
                     family = .safe(m$family, NA_character_),
                     description = .safe(m$description, NA_character_),
                     reasoning = .safe(caps$reasoning, .safe(m$reasoning, FALSE)),
-                    vision = .safe(caps$vision, .safe(m$vision, FALSE)),
+                    vision_input = .safe(caps$vision_input, .safe(caps$vision, .safe(m$vision, FALSE))),
+                    image_output = .safe(caps$image_output, FALSE),
+                    image_edit = .safe(caps$image_edit, FALSE),
+                    audio_input = .safe(caps$audio_input, FALSE),
+                    audio_output = .safe(caps$audio_output, FALSE),
                     function_call = .safe(caps$function_call, NA),
+                    structured_output = .safe(caps$structured_output, FALSE),
+                    web_search = .safe(caps$web_search, FALSE),
                     context_window = .safe(ctx$context_window, NA_integer_),
                     max_output = .safe(ctx$max_output_tokens, NA_integer_),
                     input_price = .safe(price$input, NA_real_),
@@ -161,9 +178,13 @@ generate_model_docs <- function(provider, max_items = 15) {
         caps <- m$capabilities %||% list()
         tags <- c()
         if (isTRUE(caps$reasoning) || isTRUE(m$reasoning)) tags <- c(tags, "Reasoning")
-        if (isTRUE(caps$vision) || isTRUE(m$vision)) tags <- c(tags, "Vision")
+        if (isTRUE(caps$vision_input) || isTRUE(caps$vision) || isTRUE(m$vision)) tags <- c(tags, "Vision")
         if (isTRUE(caps$function_call)) tags <- c(tags, "Tools")
-        if (isTRUE(caps$audio_input)) tags <- c(tags, "Audio")
+        if (isTRUE(caps$audio_input) || isTRUE(caps$audio_output)) tags <- c(tags, "Audio")
+        if (isTRUE(caps$image_output)) tags <- c(tags, "Image-Out")
+        if (isTRUE(caps$image_edit)) tags <- c(tags, "Image-Edit")
+        if (isTRUE(caps$structured_output)) tags <- c(tags, "Structured")
+        if (isTRUE(caps$web_search)) tags <- c(tags, "Search")
 
         tag_str <- if (length(tags) > 0) sprintf(" (%s)", paste(tags, collapse = ", ")) else ""
 

@@ -6,11 +6,17 @@
 #' @keywords internal
 NULL
 
-#' @title Create a Stream Renderer
+#' @title Create a Stream Renderer (cli / terminal backend)
 #' @description
-#' Creates an environment to manage the state of a streaming response,
-#' including thinking indicators and tool execution status.
-#' @return A list of functions for rendering.
+#' The built-in terminal backend for the agent-output [Renderer] contract,
+#' rendering a streaming response (thinking indicators, streamed text, and tool
+#' execution status) to the R console via the cli package. It conforms to the
+#' [Renderer] interface (`process_chunk`, `start_thinking`, `stop_thinking`,
+#' `render_tool_start`, `render_tool_result`, `reset_for_new_step`), so it can be
+#' swapped for any other backend (web, capture, custom UI) via the `renderer`
+#' argument of [stream_text()].
+#' @seealso [Renderer], [create_null_renderer()], [create_capture_renderer()]
+#' @return A list of functions implementing the [Renderer] contract.
 #' @keywords internal
 create_stream_renderer <- function() {
 
@@ -68,21 +74,23 @@ create_stream_renderer <- function() {
     if (state$is_thinking) {
       stop_thinking()
     }
-    
-    if (done) {
+
+    if (!is.null(text) && nzchar(text)) {
+      if (state$first_chunk) {
+        state$first_chunk <- FALSE
+      }
+
+      # Delegate to markdown renderer
+      mk_renderer$process_chunk(text, done = FALSE)
+      utils::flush.console()
+    }
+
+    if (isTRUE(done)) {
       mk_renderer$process_chunk(NULL, done = TRUE)
       return()
     }
-    
-    if (is.null(text) || !nzchar(text)) return()
 
-    if (state$first_chunk) {
-      state$first_chunk <- FALSE
-    }
-    
-    # Delegate to markdown renderer
-    mk_renderer$process_chunk(text, done = FALSE)
-    utils::flush.console()
+    invisible(NULL)
   }
 
   # 3. Tool Execution

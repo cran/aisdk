@@ -18,6 +18,7 @@ Provider class for Google Gemini.
 \itemize{
 \item \href{#method-GeminiProvider-new}{\code{GeminiProvider$new()}}
 \item \href{#method-GeminiProvider-language_model}{\code{GeminiProvider$language_model()}}
+\item \href{#method-GeminiProvider-image_model}{\code{GeminiProvider$image_model()}}
 \item \href{#method-GeminiProvider-clone}{\code{GeminiProvider$clone()}}
 }
 }
@@ -31,7 +32,12 @@ Initialize the Gemini provider.
   api_key = NULL,
   base_url = NULL,
   headers = NULL,
-  name = NULL
+  name = NULL,
+  timeout_seconds = NULL,
+  total_timeout_seconds = NULL,
+  first_byte_timeout_seconds = NULL,
+  connect_timeout_seconds = NULL,
+  idle_timeout_seconds = NULL
 )}\if{html}{\out{</div>}}
 }
 
@@ -45,6 +51,16 @@ Initialize the Gemini provider.
 \item{\code{headers}}{Optional additional headers.}
 
 \item{\code{name}}{Optional provider name override.}
+
+\item{\code{timeout_seconds}}{Legacy alias for \code{total_timeout_seconds}.}
+
+\item{\code{total_timeout_seconds}}{Optional total request timeout in seconds for API calls.}
+
+\item{\code{first_byte_timeout_seconds}}{Optional time-to-first-byte timeout in seconds for API calls.}
+
+\item{\code{connect_timeout_seconds}}{Optional connection-establishment timeout in seconds for API calls.}
+
+\item{\code{idle_timeout_seconds}}{Optional stall timeout in seconds for API calls.}
 }
 \if{html}{\out{</div>}}
 }
@@ -69,6 +85,28 @@ Create a language model.
 }
 \subsection{Returns}{
 A GeminiLanguageModel object.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-GeminiProvider-image_model"></a>}}
+\if{latex}{\out{\hypertarget{method-GeminiProvider-image_model}{}}}
+\subsection{Method \code{image_model()}}{
+Create an image model.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{GeminiProvider$image_model(
+  model_id = Sys.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{model_id}}{The model ID for image generation.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A GeminiImageModel object.
 }
 }
 \if{html}{\out{<hr>}}

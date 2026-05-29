@@ -25,6 +25,7 @@ bash execution, and R code execution.
 \item \href{#method-Computer-bash}{\code{Computer$bash()}}
 \item \href{#method-Computer-read_file}{\code{Computer$read_file()}}
 \item \href{#method-Computer-write_file}{\code{Computer$write_file()}}
+\item \href{#method-Computer-edit_file}{\code{Computer$edit_file()}}
 \item \href{#method-Computer-execute_r_code}{\code{Computer$execute_r_code()}}
 \item \href{#method-Computer-get_log}{\code{Computer$get_log()}}
 \item \href{#method-Computer-clear_log}{\code{Computer$clear_log()}}
@@ -121,10 +122,38 @@ Success status
 }
 }
 \if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-Computer-edit_file"></a>}}
+\if{latex}{\out{\hypertarget{method-Computer-edit_file}{}}}
+\subsection{Method \code{edit_file()}}{
+Edit a file by replacing an exact text pattern.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{Computer$edit_file(path, pattern, replacement, all = FALSE, encoding = "UTF-8")}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{path}}{File path (relative to working_dir or absolute)}
+
+\item{\code{pattern}}{Exact text to replace}
+
+\item{\code{replacement}}{Replacement text}
+
+\item{\code{all}}{Whether to replace all occurrences. Default FALSE.}
+
+\item{\code{encoding}}{File encoding (default: "UTF-8")}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+Success status
+}
+}
+\if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Computer-execute_r_code"></a>}}
 \if{latex}{\out{\hypertarget{method-Computer-execute_r_code}{}}}
 \subsection{Method \code{execute_r_code()}}{
-Execute R code
+Execute R code in an isolated \code{callr} process
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{Computer$execute_r_code(code, timeout_ms = 30000, capture_output = TRUE)}\if{html}{\out{</div>}}
 }
@@ -141,7 +170,9 @@ Execute R code
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
-List with result, output, error
+List with result, output, error, and \code{execution_mode}.
+\code{execution_mode} is always \code{"sandbox_exec"} for this computer-layer path,
+which does not persist values into a live \code{ChatSession$get_envir()}.
 }
 }
 \if{html}{\out{<hr>}}

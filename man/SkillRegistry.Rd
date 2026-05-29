@@ -17,10 +17,15 @@ R6 class that manages a collection of skills. Provides methods to:
 \itemize{
 \item \href{#method-SkillRegistry-new}{\code{SkillRegistry$new()}}
 \item \href{#method-SkillRegistry-scan_skills}{\code{SkillRegistry$scan_skills()}}
+\item \href{#method-SkillRegistry-refresh}{\code{SkillRegistry$refresh()}}
+\item \href{#method-SkillRegistry-list_roots}{\code{SkillRegistry$list_roots()}}
 \item \href{#method-SkillRegistry-get_skill}{\code{SkillRegistry$get_skill()}}
+\item \href{#method-SkillRegistry-resolve_skill_name}{\code{SkillRegistry$resolve_skill_name()}}
+\item \href{#method-SkillRegistry-find_closest_skill_name}{\code{SkillRegistry$find_closest_skill_name()}}
 \item \href{#method-SkillRegistry-has_skill}{\code{SkillRegistry$has_skill()}}
 \item \href{#method-SkillRegistry-list_skills}{\code{SkillRegistry$list_skills()}}
 \item \href{#method-SkillRegistry-count}{\code{SkillRegistry$count()}}
+\item \href{#method-SkillRegistry-find_relevant_skills}{\code{SkillRegistry$find_relevant_skills()}}
 \item \href{#method-SkillRegistry-generate_prompt_section}{\code{SkillRegistry$generate_prompt_section()}}
 \item \href{#method-SkillRegistry-print}{\code{SkillRegistry$print()}}
 \item \href{#method-SkillRegistry-clone}{\code{SkillRegistry$clone()}}
@@ -32,13 +37,15 @@ R6 class that manages a collection of skills. Provides methods to:
 \subsection{Method \code{new()}}{
 Create a new SkillRegistry, optionally scanning a directory.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{SkillRegistry$new(path = NULL)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{SkillRegistry$new(path = NULL, recursive = FALSE)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
 \item{\code{path}}{Optional path to scan for skills on creation.}
+
+\item{\code{recursive}}{Whether to scan subdirectories when \code{path} is provided.}
 }
 \if{html}{\out{</div>}}
 }
@@ -52,7 +59,7 @@ A new SkillRegistry object.
 \subsection{Method \code{scan_skills()}}{
 Scan a directory for skill folders containing SKILL.md files.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{SkillRegistry$scan_skills(path, recursive = FALSE)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{SkillRegistry$scan_skills(path, recursive = FALSE, remember = TRUE)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -61,11 +68,46 @@ Scan a directory for skill folders containing SKILL.md files.
 \item{\code{path}}{Path to the directory to scan.}
 
 \item{\code{recursive}}{Whether to scan subdirectories. Default FALSE.}
+
+\item{\code{remember}}{Whether this root should be remembered for \code{refresh()}.}
 }
 \if{html}{\out{</div>}}
 }
 \subsection{Returns}{
 The registry object (invisibly), for chaining.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-SkillRegistry-refresh"></a>}}
+\if{latex}{\out{\hypertarget{method-SkillRegistry-refresh}{}}}
+\subsection{Method \code{refresh()}}{
+Re-scan remembered skill roots so updates on disk become visible.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{SkillRegistry$refresh(clear = TRUE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{clear}}{If TRUE, clears currently loaded skills before re-scanning.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+The registry object (invisibly).
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-SkillRegistry-list_roots"></a>}}
+\if{latex}{\out{\hypertarget{method-SkillRegistry-list_roots}{}}}
+\subsection{Method \code{list_roots()}}{
+List skill roots remembered by this registry.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{SkillRegistry$list_roots()}\if{html}{\out{</div>}}
+}
+
+\subsection{Returns}{
+A data frame with root path and recursive flag.
 }
 }
 \if{html}{\out{<hr>}}
@@ -86,6 +128,46 @@ Get a skill by name.
 }
 \subsection{Returns}{
 The Skill object, or NULL if not found.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-SkillRegistry-resolve_skill_name"></a>}}
+\if{latex}{\out{\hypertarget{method-SkillRegistry-resolve_skill_name}{}}}
+\subsection{Method \code{resolve_skill_name()}}{
+Resolve a skill name or alias to its canonical name.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{SkillRegistry$resolve_skill_name(name)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{name}}{Skill name or alias.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+Canonical skill name or NULL.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-SkillRegistry-find_closest_skill_name"></a>}}
+\if{latex}{\out{\hypertarget{method-SkillRegistry-find_closest_skill_name}{}}}
+\subsection{Method \code{find_closest_skill_name()}}{
+Find the closest matching canonical skill name for fuzzy recovery.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{SkillRegistry$find_closest_skill_name(name)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{name}}{Skill name or alias candidate.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+Canonical skill name or NULL.
 }
 }
 \if{html}{\out{<hr>}}
@@ -132,6 +214,37 @@ Get the number of registered skills.
 
 \subsection{Returns}{
 Integer count of skills.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-SkillRegistry-find_relevant_skills"></a>}}
+\if{latex}{\out{\hypertarget{method-SkillRegistry-find_relevant_skills}{}}}
+\subsection{Method \code{find_relevant_skills()}}{
+Find relevant skills for a user query and optional file paths.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{SkillRegistry$find_relevant_skills(
+  query = NULL,
+  file_paths = character(0),
+  cwd = NULL,
+  limit = 3L
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{query}}{Optional user query text.}
+
+\item{\code{file_paths}}{Optional character vector of file paths.}
+
+\item{\code{cwd}}{Optional working directory for path matching.}
+
+\item{\code{limit}}{Maximum number of results to return.}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+Data frame of matching skills sorted by score.
 }
 }
 \if{html}{\out{<hr>}}

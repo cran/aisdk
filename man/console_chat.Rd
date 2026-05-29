@@ -12,9 +12,14 @@ console_chat(
   stream = TRUE,
   verbose = FALSE,
   agent = "auto",
+  skills = NULL,
   working_dir = tempdir(),
   sandbox_mode = "permissive",
-  show_thinking = verbose
+  show_thinking = verbose,
+  startup_dir = getwd(),
+  initial_prompt = NULL,
+  profile = c("minimal", "legacy"),
+  extensions = "auto"
 )
 }
 \arguments{
@@ -38,12 +43,26 @@ thinking output. Defaults to \code{FALSE} for a cleaner console UI.}
 \item An Agent object: Use the provided custom agent
 }}
 
-\item{working_dir}{Working directory for the console agent. Defaults to \code{tempdir()}.}
+\item{skills}{Optional skill paths, \code{"auto"}, or a SkillRegistry object for
+the built-in console agent. Defaults to automatic skill discovery when
+\code{agent = "auto"}.}
+
+\item{working_dir}{Working directory for sandboxed console tools. Defaults to \code{tempdir()}.}
 
 \item{sandbox_mode}{Sandbox mode for the console agent: "strict", "permissive" (default), or "none".}
 
 \item{show_thinking}{Logical. Whether to show model thinking blocks when the
 provider exposes them. Defaults to \code{verbose}.}
+
+\item{startup_dir}{R session startup directory used for project-aware context. Defaults to \code{getwd()}.}
+
+\item{initial_prompt}{Optional user prompt to send automatically before
+entering the interactive REPL.}
+
+\item{profile}{Console profile. \code{"minimal"} is the default Pi-like tool set;
+\code{"legacy"} restores the previous all-in-one console agent.}
+
+\item{extensions}{Extension loading mode. Defaults to \code{"auto"}.}
 }
 \value{
 The ChatSession object (invisibly) when chat ends.
@@ -66,9 +85,10 @@ specific tool. The current implementation uses a shared frame builder for the
 status bar, tool timeline, and overlay surfaces, while preserving an
 append-only terminal fallback.
 
-By default, the console operates in agent mode with tools for bash execution,
-file operations, R code execution, and more. Set \code{agent = NULL} for simple
-chat without tools.
+By default, the console operates in minimal agent mode with four tools:
+\code{bash}, \code{read_file}, \code{write_file}, and \code{edit_file}. Set
+\code{profile = "legacy"} to restore the previous broad all-in-one agent, or
+\code{agent = NULL} for simple chat without tools.
 }
 \examples{
 \donttest{

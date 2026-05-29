@@ -158,7 +158,7 @@ tool_result_failed <- function(result, success = TRUE) {
 }
 
 #' @keywords internal
-compact_tool_result_label <- function(name, result, success = TRUE) {
+compact_tool_result_label <- function(name, result, success = TRUE, display_status = NULL) {
   failed <- tool_result_failed(result, success)
 
   base <- switch(name,
@@ -171,6 +171,10 @@ compact_tool_result_label <- function(name, result, success = TRUE) {
     "ask_user" = "Prompt",
     name
   )
+
+  if (identical(display_status, "invalid_arguments")) {
+    return(paste0(base, " call had invalid arguments"))
+  }
 
   if (failed) {
     paste0(base, " failed")
@@ -306,7 +310,11 @@ create_markdown_stream_renderer <- function() {
       state$thinking_line_count <- 0
       state$thinking_lines_printed <- 0
       state$current_thinking_text <- ""
-      return()
+      remainder <- paste(parts[-1], collapse = "</think>")
+      if (!nzchar(remainder)) {
+        return()
+      }
+      line <- remainder
     }
 
     if (state$in_thinking_block) {
@@ -494,9 +502,14 @@ cli_tool_result <- function(name, result, success = TRUE, raw_result = result) {
   }
 
   failed <- tool_result_failed(result, success)
+  display_status <- if (is.list(raw_result) && identical(raw_result$error_type %||% NULL, "invalid_tool_arguments")) {
+    "invalid_arguments"
+  } else {
+    NULL
+  }
 
   if (tool_log_is_compact()) {
-    label <- compact_tool_result_label(name, result, success = !failed)
+    label <- compact_tool_result_label(name, result, success = !failed, display_status = display_status)
 
     if (!requireNamespace("cli", quietly = TRUE)) {
       status <- if (failed) "\u2716" else "\u2714"
