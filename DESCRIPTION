@@ -1,6 +1,6 @@
 Package: aisdk
 Title: Unified Interface for AI Model Providers
-Version: 1.4.10
+Version: 1.4.11
 Authors@R: person("Yonghe", "Xia", , "xiayh17@gmail.com", role = c("aut", "cre"))
 Description: A production-grade AI toolkit for R featuring a layered
     architecture (Specification, Utilities, Providers, Core), request
@@ -22,9 +22,9 @@ Config/testthat/edition: 3
 URL: https://github.com/YuLab-SMU/aisdk, https://yulab-smu.top/aisdk/
 BugReports: https://github.com/YuLab-SMU/aisdk/issues
 NeedsCompilation: no
-Packaged: 2026-05-29 00:31:08 UTC; xiayh
+Packaged: 2026-05-29 18:09:52 UTC; xiayh
 Author: Yonghe Xia [aut, cre]
 Maintainer: Yonghe Xia <xiayh17@gmail.com>
 Depends: R (>= 4.1.0)
 Repository: CRAN
-Date/Publication: 2026-05-29 06:20:13 UTC
+Date/Publication: 2026-05-30 15:10:08 UTC

@@ -1,3 +1,17 @@
+# aisdk 1.4.11
+
+* Removed wall-clock elapsed-time assertions from two `r_eval`
+  rejection/abort tests in `tests/testthat/test-r-introspect-tools.R`.
+  The tests now rely solely on the structured output (the `REJECTED`
+  status and the subprocess refusal marker), which already distinguishes
+  an immediate rejection from a timeout wait. The previous
+  `expect_lt(elapsed, ...)` thresholds were unreliable on loaded CRAN
+  build machines (a `library(aisdk)` subprocess start alone exceeded the
+  5s bound on the Fedora check farm) and are exactly the kind of timing
+  test that "Writing R Extensions" advises against.
+* Removed stray `Rplots*.pdf` plot artifacts that had been committed
+  under `tests/testthat/`.
+
 # aisdk 1.4.10
 
 * Skip `r_eval` process-tree-reaping test on CRAN (it polls `pgrep`
