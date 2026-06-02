@@ -1,7 +1,7 @@
-d8bc618b63448709a11d1f2e01257a3d *DESCRIPTION
+65f8d04398d4411a6b57790cefec8b70 *DESCRIPTION
 d4dbe4b803be1fb25dee4fa98a481879 *LICENSE
-bf2d6ac03a27b526f5f36c6bac22f954 *NAMESPACE
-4b67d3e0985a6751c943e2394779bccf *NEWS.md
+6f5b68633a668c4f2c6879a70b3c2511 *NAMESPACE
+e70a0d54f2612e19829567a4152326cf *NEWS.md
 5f3b2380c0de134bdd619aa5743beda3 *R/agent.R
 4aa997f93cbbc83640cce3b4fc6f9b09 *R/agent_evals.R
 7e272134b6eed8b8ce2b7a1c31bfb923 *R/agent_library.R
@@ -36,7 +36,7 @@ b67da4e34d27706b2a84aee43041f24b *R/core_api.R
 2f5c0107bde5a70806942fa318604fea *R/extension_runtime.R
 d41b00e21cbb7550b330ee07faa53c11 *R/hooks.R
 3f217cea6e1c75777cd77704525c7d34 *R/image_api.R
-6b9ba52096e301bd070ca4751903b8e5 *R/image_model.R
+42334dae3002da2258d9a0418fc41875 *R/image_model.R
 95636711c24a4d353cf5aba33173af09 *R/model_defaults.R
 4e9c86b514f93e75d8b1dcb50ec1925d *R/multimodal.R
 9ae8633f7e73d12041a86ecc7c569df6 *R/openai_tools.R
@@ -74,13 +74,13 @@ a04536e77e79e22434bfa36983ed9f95 *R/utils_capture.R
 3f4f7f35a5152567a0e0ba2355c5d35f *R/utils_cli.R
 e4c7afc3d10950c8f83584341b2b17ff *R/utils_console.R
 415a12527f6a60c8f32111603e31f415 *R/utils_env.R
-43f80223daff05c9cb8eaadff7a93b00 *R/utils_http.R
+446df70ed38db84c8bb8158ab87fedf8 *R/utils_http.R
 070159dd858fcd8fc5a50972c6812010 *R/utils_ids.R
 9e5b58d0507101550bddd2b9df5bc6de *R/utils_json.R
 77a4014b6ded4bb66baa62ad631a0994 *R/utils_middleware.R
 35d0afb5fd79b83e02fc484bd2682177 *R/utils_models.R
 f0cb3e8822adcc7c197c957a3bbc8cfd *R/utils_models_update.R
-de2fba62d1a544792904dbd90759cbe6 *R/utils_registry.R
+a6cdde832df6554568fb1fe85ecd9f4d *R/utils_registry.R
 45621b71dedc36c71aaa5af73a7e599e *R/variable_registry.R
 cba1ec5371715b3b85fff2aa6f8830a0 *README.md
 84e1c9801da096f735349c13ddd78481 *inst/extdata/models/anthropic.json
@@ -133,6 +133,7 @@ c9401db9b8a9f24988f37a55c52bd34c *man/agent_registry.Rd
 adba76b486691138b3bf7d253125fb12 *man/analyze_tool_failures.Rd
 330b7bd798e94c8dcd5de06f1afa6865 *man/annotate_model_capabilities.Rd
 747b5ed1033525defd01814382bf6d77 *man/api_diagnostics.Rd
+15604a7fe6d6a7a701859f08ce203271 *man/api_endpoint_urls.Rd
 72fe929deacbe1c52a31f689f2d6988e *man/as_preview_text.Rd
 15b0f67cf2b26ee8510bdc239f8ec2fb *man/ask_ai.Rd
 c482acd32448bd2144e260459fd891ce *man/auth_hook.Rd
@@ -237,6 +238,7 @@ fa2937db0a3dda6f722b541d5d7ca554 *man/expect_tool_selection.Rd
 8f3a5662b396b44937e9256192103906 *man/extract_code_from_response.Rd
 18e0d645aaa14b14a592bacceaaab40f *man/extract_from_image.Rd
 35e8e7696b54dbb139ae10e1638fc4c8 *man/fetch_api_models.Rd
+25a6496cd99c8bf724d26543e2c3b810 *man/finalize_image_artifacts.Rd
 6f8ef8e3553d9f008fcb6a11ec713ec0 *man/find_closest_match.Rd
 fbdf2ab693005e1b70e11f3ed6996226 *man/find_tool.Rd
 d77da08050a33a6dddeaf4168b06cd01 *man/format_captured_execution.Rd
@@ -288,11 +290,14 @@ b1697f3e38c6f05682faac94fec39916 *man/load_chat_session.Rd
 83750bc75048c7fcca3664e116058002 *man/load_models_config.Rd
 ed07bb3e3876b35ba8cda95dfd501020 *man/map_anthropic_chunk.Rd
 cf4291e3afa6f4871c133c34ff39781b *man/map_openai_chunk.Rd
+5500c6f531f853b29eff8a22c0edc1f2 *man/materialize_image_upload.Rd
 a1a3880be70be9127123d261262aaca7 *man/migrate_pattern.Rd
 ed17a85d1ea2ba1cccd73f8e454d4589 *man/model.Rd
 ab9b29535f678c6ff51b752656e68dd2 *man/model_defaults.Rd
 5d7b4e5fd737b8a8d443e625bc4c5cd0 *man/multimodal.Rd
 292cc47f6926b5e687fd1ddd2625268a *man/normalize_content_blocks.Rd
+708e8d02e0231a691825d71ffe5ef0e3 *man/normalize_image_input_for_json.Rd
+b0efdbb4690d57d6a9c63071c97b5747 *man/normalize_image_input_to_url_like.Rd
 26bfca8fbeac455613741d1a1db39e68 *man/object_peek.Rd
 469a082ffde4ea00345be0f12c841593 *man/openai_code_interpreter_tool.Rd
 c3ff54a773c7f5573f12ececb6ee7e61 *man/openai_computer_use_tool.Rd
@@ -421,6 +426,7 @@ fd3754d8104b7c1b3016ca194d778d11 *tests/testthat/test-agent.R
 5a6ba2eea836637a36a2ffba59191ed8 *tests/testthat/test-auth-hook.R
 f7cbea92ffb9d086f15ec7ced25aed5f *tests/testthat/test-cache.R
 7d559ad87b6b8d502751e64a819a8e55 *tests/testthat/test-capability-models.R
+6cb94e3cc2a7af387442b2e8ecb5c719 *tests/testthat/test-companion-provider.R
 2f5f8c85277fada8934bf41e12ee27c7 *tests/testthat/test-computer.R
 36ea7f17bf1544ca03e118c83db305ea *tests/testthat/test-console-agent.R
 ef28a3a758d22c969d83912a4417e4ce *tests/testthat/test-console-setup.R
